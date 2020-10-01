@@ -1,0 +1,9 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+  config.vm.hostname = "host-2"
+  config.vm.box = "ubuntu/xenial64"
+  config.vm.network "public_network", use_dhcp_assigned_default_route: true
+  config.vm.provision "shell", path: "docker-install.sh"
+end

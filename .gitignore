@@ -1,2 +1,5 @@
 .idea/
+./vagrant/.vagrant/*
+./vagrant-docker/.vagrant/*
+./vagrant-host-2/.vagrant/*
 advanced_networking_code_examples
