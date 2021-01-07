@@ -8,6 +8,12 @@ Kind install can be found [here](https://kind.sigs.k8s.io/docs/user/quick-start/
 
 Helm install can be found [here](https://helm.sh/docs/helm/helm_install/)
 
+Steps
+1. Create Kind cluster
+2. Install Cilium 
+3. Add Cilium to cluster
+4. Test connectivity
+5. Test Webserver and Database NetworkPolicies 
 
 ```bash
 kind create cluster --config=kind-config.yaml
