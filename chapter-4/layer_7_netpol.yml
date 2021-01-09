@@ -1,0 +1,19 @@
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: "l7-rule"
+spec:
+  endpointSelector:
+    matchLabels:
+      app: app
+  egress:
+    - toPorts:
+        - ports:
+            - port: '80'
+              protocol: TCP
+          rules:
+            http:
+              - method: GET
+                path: "/"
+              - method: GET
+                path: "/ping"

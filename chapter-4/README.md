@@ -144,17 +144,61 @@ will deploy our golang webserver that now connects to a database. Using a networ
 without the network policies in place, then deploy network policies that will restrict connectivity to the web 
 server and database. 
 
-1. Deploy Golang web server
-2. Deploy Database
-3. Deploy Network Utils images 
-4. Test open connectivity 
-5. Deploy Network policies 
-6. Test Closed Network Connectivity
+1. Deploy Containers, Web, DB and Utils
+2. Test open connectivity 
+3. Deploy Network policies 
+4. Test Closed Network Connectivity
 
 #### 1. Deploy Golang web server
-#### 2. Deploy Database
-#### 3. Deploy Network Utils images
-#### 4. Test open connectivity
-#### 5. Deploy Network policies
-#### 6. Test Closed Network Connectivity
+
+Our Golang web server has been updated to connect to a postgres database. Let's deploy the Postgres database with 
+the following yaml and commands. 
+
+1.1 Deploy Database
+
+```bash
+kubectl apply -f database.yaml 
+service/postgres created
+configmap/postgres-config created
+statefulset.apps/postgres created
+```
+
+Deploying our Webserver as a kubernetes deployment to our kind cluster. 
+
+1.2  Deploy Web Server
+
+```bash
+ kubectl apply -f web.yaml 
+deployment.apps/app created 
+```
+
+To run connectivity tests inside the cluster network we will deploy and use a dns utils pod that has basic 
+networking tools like ping and curl. 
+
+1.3 Deploy Dns Utils pod
+
+```bash
+kubectl apply -f dnsutils.yaml
+pod/dnsutils created
+```
+
+#### 2. Test open connectivity
+
+
+```bash
+```
+
+
+#### 3. Deploy Network policies
+
+
+```bash
+```
+
+
+#### 4. Test Closed Network Connectivity
+
+```bash
+```
+
 
