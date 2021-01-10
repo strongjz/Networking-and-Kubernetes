@@ -8,6 +8,8 @@ Kind install can be found [here](https://kind.sigs.k8s.io/docs/user/quick-start/
 
 Helm install can be found [here](https://helm.sh/docs/helm/helm_install/)
 
+Cilium Rules basic are available [here](https://docs.cilium.io/en/v1.9/policy/intro/#rule-basics)
+
 Steps
 1. Create Kind cluster
 2. Add Cilium images to kind cluster
@@ -184,21 +186,226 @@ pod/dnsutils created
 
 #### 2. Test open connectivity
 
+Since we are not deploying A service with an ingress, we can use kubectl port forward to test connectivity to our 
+webserver 
+
+More information about kubectl port-forward can be found [here](https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/)
+```bash
+kubectl port-forward app-5878d69796-j889q 8080:8080
+```
+
+Now from our local terminal we can reach out API. 
 
 ```bash
+curl localhost:8080/
+Hello
+curl localhost:8080/healthz
+Healthy
+curl localhost:8080/data
+Database Connected
+```
+
+Let's test connectivity to our web server inside the cluster from other pods. In order to do that we need to get the 
+IP address of our web server pod. 
+
+```bash
+kubectl get pods -l app=app -o wide
+NAME                   READY   STATUS    RESTARTS   AGE   IP             NODE           NOMINATED NODE   READINESS GATES
+app-5878d69796-j889q   1/1     Running   0          87m   10.244.1.188   kind-worker3   <none>           <none>
+```
+
+Now we can test layer4 and 7 connectivity to the web server from the DNS utils pod. 
+
+```bash
+kubectl exec dnsutils -- nc -z -vv 10.244.1.188 8080
+10.244.1.188 (10.244.1.188:8080) open
+sent 0, rcvd 0
+```
+
+Layer 7 HTTP API Access
+```bash
+kubectl exec dnsutils -- wget -qO- 10.244.1.188:8080/
+Hello
+
+kubectl exec dnsutils -- wget -qO- 10.244.1.188:8080/data
+Database Connected
+
+kubectl exec dnsutils -- wget -qO- 10.244.1.188:8080/healthz
+Healthy
+```
+
+We can also test the same to the database pod. 
+
+Retrieve the IP Address of database pod.
+```bash
+kubectl get pods -l app=postgres -o wide
+NAME         READY   STATUS    RESTARTS   AGE   IP             NODE          NOMINATED NODE   READINESS GATES
+postgres-0   1/1     Running   0          98m   10.244.2.189   kind-worker   <none>           <none>
+```
+
+DNS Utils Connectivity
+```bash
+kubectl exec dnsutils -- nc -z -vv 10.244.2.189 5432
+10.244.2.189 (10.244.2.189:5432) open
+sent 0, rcvd 0
 ```
 
 
-#### 3. Deploy Network policies
+#### 3. Deploy Network policies and Test Closed Network Connectivity
 
+Let's first restrict access to the database pod to only the Web server.
 
-```bash
-```
-
-
-#### 4. Test Closed Network Connectivity
+The postgress port 5432 is open from dnsutils to database. 
 
 ```bash
+kubectl exec dnsutils -- nc -z -vv -w 5 10.244.2.189 5432
+10.244.2.189 (10.244.2.189:5432) open
+sent 0, rcvd 0
 ```
 
+Apply the Network policy that only allows traffic from the Web Server pod to the database.
 
+```bash
+kubectl apply -f layer_3_net_pol.yaml
+ciliumnetworkpolicy.cilium.io/l3-rule-app-to-db created
+```
+
+With the network policy applied, the dnsutils pod can no longer reach the database pod. 
+
+```bash
+kubectl exec dnsutils -- nc -z -vv -w 5 10.244.2.189 5432
+nc: 10.244.2.189 (10.244.2.189:5432): Operation timed out
+sent 0, rcvd 0
+command terminated with exit code 1
+```
+
+But we the Web server is still connected to the Database. 
+
+```bash
+kubectl exec dnsutils -- wget -qO- 10.244.1.188:8080/data
+Database Connected
+
+curl localhost:8080/data
+Database Connected
+```
+
+The Cilium install and deploy of cilium objects creates resources that can retrieved just like pods with kubectl. 
+
+```bash 
+kubectl describe ciliumnetworkpolicies.cilium.io l3-rule-app-to-db
+Name:         l3-rule-app-to-db
+Namespace:    default
+Labels:       <none>
+Annotations:  API Version:  cilium.io/v2
+Kind:         CiliumNetworkPolicy
+Metadata:
+Creation Timestamp:  2021-01-10T01:06:13Z
+Generation:          1
+Managed Fields:
+API Version:  cilium.io/v2
+Fields Type:  FieldsV1
+fieldsV1:
+f:metadata:
+f:annotations:
+.:
+f:kubectl.kubernetes.io/last-applied-configuration:
+f:spec:
+.:
+f:endpointSelector:
+.:
+f:matchLabels:
+.:
+f:app:
+f:ingress:
+Manager:         kubectl
+Operation:       Update
+Time:            2021-01-10T01:06:13Z
+Resource Version:  47377
+Self Link:         /apis/cilium.io/v2/namespaces/default/ciliumnetworkpolicies/l3-rule-app-to-db
+UID:               71ee6571-9551-449d-8f3e-c177becda35a
+Spec:
+Endpoint Selector:
+Match Labels:
+App:  postgres
+Ingress:
+From Endpoints:
+Match Labels:
+App:  app
+Events:       <none>
+```
+
+Now let us apply the Layer 7 policy. Cilium is layer 7 aware, so we can block or allow certain base on HTTP URI paths. 
+In our example policy we allow HTTP GETs on / and /data but not allow on /healthz, lets test that out. 
+
+```bash
+kubectl apply -f layer_7_netpol.yml
+ciliumnetworkpolicy.cilium.io/l7-rule created
+```
+
+```bash
+kubectl get ciliumnetworkpolicies.cilium.io
+NAME      AGE
+l7-rule   6m54s
+
+kubectl describe ciliumnetworkpolicies.cilium.io l7-rule
+Name:         l7-rule
+Namespace:    default
+Labels:       <none>
+Annotations:  API Version:  cilium.io/v2
+Kind:         CiliumNetworkPolicy
+Metadata:
+  Creation Timestamp:  2021-01-10T00:49:34Z
+  Generation:          1
+  Managed Fields:
+    API Version:  cilium.io/v2
+    Fields Type:  FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:annotations:
+          .:
+          f:kubectl.kubernetes.io/last-applied-configuration:
+      f:spec:
+        .:
+        f:egress:
+        f:endpointSelector:
+          .:
+          f:matchLabels:
+            .:
+            f:app:
+    Manager:         kubectl
+    Operation:       Update
+    Time:            2021-01-10T00:49:34Z
+  Resource Version:  43869
+  Self Link:         /apis/cilium.io/v2/namespaces/default/ciliumnetworkpolicies/l7-rule
+  UID:               0162c16e-dd55-4020-83b9-464bb625b164
+Spec:
+  Egress:
+    To Ports:
+      Ports:
+        Port:      8080
+        Protocol:  TCP
+      Rules:
+        Http:
+          Method:  GET
+          Path:    /
+          Method:  GET
+          Path:    /data
+  Endpoint Selector:
+    Match Labels:
+      App:  app
+Events:     <none>
+```
+
+As you can see, / and /data are available by not /healthz
+
+```bash
+kubectl exec dnsutils -- wget -qO- 10.244.1.188:8080/data
+Database Connected
+
+kubectl exec dnsutils -- wget -qO- 10.244.1.188:8080/
+Hello
+
+kubectl exec dnsutils -- wget -qO- -T 5 10.244.1.188:8080/healthz
+wget: error getting response
+command terminated with exit code 1
+```
