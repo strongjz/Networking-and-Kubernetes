@@ -263,8 +263,6 @@ NODE: kind-worker2, POD IP:10.244.1.5
 The downside of using Nodeport service type is that the Host IP address must be known. Also Ports must tracked across
 all applications. A nodeport deployment will fail if it can not allocate the requested port.
 
-
-
 === Cluster IP
 
 *ClusterIP Service*
@@ -669,13 +667,13 @@ Events:
 
 Let's remove the app label and see what happens.
 
-In a seperate terminal run this command
+In a separate terminal run this command
 [source,bash]
 ----
 kubectl get pods -w
 ----
 
-And in another seperate terminal
+And in another separate terminal
 [source,bash]
 ----
 kubectl get endpoints -w
@@ -772,7 +770,6 @@ Events:
   ----     ------                  ----  ----                 -------
 ----
 
-
 ===  Endpoint Slices
 
 EndpointSlices track network endpoints within a Kubernetes cluster for a service. They provide a
@@ -827,6 +824,199 @@ Events:         <none>
 ----
 
 ===  LoadBalancer
+
+Since we are running on our local machine and not in a Service Provider like AWS, GCP or Azure, we can use MetalLB as
+an example for our Loadbalancer service. MetalLB project aims to allow users to deploy Bare Metal Loadbalancers for
+their clusters.
+
+This example has been modified from https://kind.sigs.k8s.io/docs/user/loadbalancer[Kind example deployment]
+
+Deploy a seperate namespace for MetalLB
+
+[source,bash]
+----
+kubectl apply -f mlb-ns.yaml
+namespace/metallb-system created
+
+----
+
+MetalLB Members require a secret for joining, let us deploy one now for them to use in our cluster.
+
+[source,bash]
+----
+kubectl create secret generic -n metallb-system memberlist --from-literal=secretkey="$(openssl rand -base64 128)"
+secret/memberlist created
+
+----
+
+Time to deploy MetalLB
+
+[source,bash]
+----
+ kubectl apply -f ./metallb.yaml
+podsecuritypolicy.policy/controller created
+podsecuritypolicy.policy/speaker created
+serviceaccount/controller created
+serviceaccount/speaker created
+clusterrole.rbac.authorization.k8s.io/metallb-system:controller created
+clusterrole.rbac.authorization.k8s.io/metallb-system:speaker created
+role.rbac.authorization.k8s.io/config-watcher created
+role.rbac.authorization.k8s.io/pod-lister created
+clusterrolebinding.rbac.authorization.k8s.io/metallb-system:controller created
+clusterrolebinding.rbac.authorization.k8s.io/metallb-system:speaker created
+rolebinding.rbac.authorization.k8s.io/config-watcher created
+rolebinding.rbac.authorization.k8s.io/pod-lister created
+daemonset.apps/speaker created
+deployment.apps/controller created
+
+----
+
+Now we wait for the deployment to finish.
+
+[source,bash]
+----
+kubectl get pods -n metallb-system --watch
+NAME                          READY   STATUS              RESTARTS   AGE
+controller-5df88bd85d-mvgqn   0/1     ContainerCreating   0          10s
+speaker-5knqb                 1/1     Running             0          10s
+speaker-k79c9                 1/1     Running             0          10s
+speaker-pfs2p                 1/1     Running             0          10s
+speaker-sl7fd                 1/1     Running             0          10s
+controller-5df88bd85d-mvgqn   1/1     Running             0          12s
+----
+
+To complete configuration, we need to provide metallb a range of IP addresses it controls. This his range has to be
+on the docker kind network.
+
+[source,bash]
+----
+docker network inspect -f '{{.IPAM.Config}}' kind
+[{172.18.0.0/16  172.18.0.1 map[]} {fc00:f853:ccd:e793::/64  fc00:f853:ccd:e793::1 map[]}]
+----
+
+172.18.0.0/16. We want our loadbalancer IP range to come from this subclass. We can configure metallb, for instance,
+to use 172.18.255.200 to 172.18.255.250 by creating the configmap.
+
+The config map would look like this
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: metallb-system
+  name: config
+data:
+  config: |
+    address-pools:
+    - name: default
+      protocol: layer2
+      addresses:
+      - 172.18.255.200-172.18.255.250
+```
+
+[source,bash]
+----
+kubectl apply -f ./metallb-configmap.yaml
+----
+
+Now that we MetalLB deploy we deploy a LB for our Web app.
+
+[source,bash]
+----
+kubectl apply -f ./services-loadbalancer.yaml
+service/loadbalancer-service created
+
+----
+
+Test it.
+
+For fun let us scale the web app deployment to 10, if you have the resources for it!
+[source,bash]
+----
+kubectl scale deployment app --replicas 10
+
+kubectl get pods -w
+NAME                   READY   STATUS    RESTARTS   AGE
+app-5586fc9d77-4gbp4   1/1     Running   0          11s
+app-5586fc9d77-6dcg2   1/1     Running   0          45m
+app-5586fc9d77-7frts   1/1     Running   0          68m
+app-5586fc9d77-gf82k   1/1     Running   0          11s
+app-5586fc9d77-hpscf   1/1     Running   0          11s
+app-5586fc9d77-kk66q   1/1     Running   0          11s
+app-5586fc9d77-mxhgw   1/1     Running   0          68m
+app-5586fc9d77-qpxwk   1/1     Running   0          69m
+app-5586fc9d77-sd5k2   1/1     Running   0          11s
+app-5586fc9d77-tpz8q   1/1     Running   0          68m
+app-5586fc9d77-whnwk   1/1     Running   0          11s
+dnsutils               1/1     Running   3          3h47m
+postgres-0             1/1     Running   0          3h47m
+postgres-1             1/1     Running   0          3h47m
+----
+
+With more replicas deployed for our App behind the loadbalancer, let's get the external IP of the Loadbalancer, `172
+.18.255.200`.
+
+[source,bash]
+----
+kubectl get svc loadbalancer-service
+NAME                   TYPE           CLUSTER-IP     EXTERNAL-IP      PORT(S)        AGE
+loadbalancer-service   LoadBalancer   10.99.24.220   172.18.255.200   80:31276/TCP   52s
+
+
+kubectl get svc/loadbalancer-service -o=jsonpath='{.status.loadBalancer.ingress[0].ip}'
+172.18.255.200
+----
+
+Since Docker for Mac or Windows does not expose the kind network to the host, we can not directly reach the Loadbalancer
+on the Docker network.
+
+We *can* simulate it by attaching a docker container to the kind network and curling the Loadbalancer as a workaround.
+
+If you would like to read more about this issue there is a great blog post by https://www.thehumblelab.com/kind-and-metallb-on-mac/[Cody De Arkland]
+
+We will use another great Networking docker image https://github.com/nicolaka/netshoot[Netshoot], to run locally,
+attach to the kind docker network and curl our Loadbalancer.
+
+Run it several times to get different Pods.
+
+[source,bash]
+----
+docker run --network kind -a stdin -a stdout -i -t nicolaka/netshoot curl 172.18.255.200/host
+NODE: kind-worker, POD IP:10.244.2.7
+
+docker run --network kind -a stdin -a stdout -i -t nicolaka/netshoot curl 172.18.255.200/host
+NODE: kind-worker, POD IP:10.244.2.9
+
+docker run --network kind -a stdin -a stdout -i -t nicolaka/netshoot curl 172.18.255.200/host
+NODE: kind-worker3, POD IP:10.244.3.11
+
+docker run --network kind -a stdin -a stdout -i -t nicolaka/netshoot curl 172.18.255.200/host
+NODE: kind-worker2, POD IP:10.244.1.6
+
+docker run --network kind -a stdin -a stdout -i -t nicolaka/netshoot curl 172.18.255.200/host
+NODE: kind-worker, POD IP:10.244.2.9
+
+----
+
+With each new request the metalLB service is hitting different pod back ends.
+
+[source,bash]
+----
+ kubectl describe endpoints loadbalancer-service
+Name:         loadbalancer-service
+Namespace:    default
+Labels:       app=app
+Annotations:  endpoints.kubernetes.io/last-change-trigger-time: 2021-01-30T19:59:57Z
+Subsets:
+  Addresses:          10.244.1.6,10.244.1.7,10.244.1.8,10.244.2.10,10.244.2.7,10.244.2.8,10.244.2.9,10.244.3.11,10.244.3.12,10.244.3.9
+  NotReadyAddresses:  <none>
+  Ports:
+    Name          Port  Protocol
+    ----          ----  --------
+    service-port  8080  TCP
+
+Events:  <none>
+----
 
 === External Service
 
@@ -904,7 +1094,11 @@ Received 126 bytes from 10.96.0.10#53 in 0 ms
 
 ----
 
-== Deploy an Ingress Controller
+== Ingress
+
+=== Deploy an Ingress Controller
+
+=== Deploy Ingress rules
 
 == Service Mesh
 
