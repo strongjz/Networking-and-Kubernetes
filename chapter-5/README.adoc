@@ -263,9 +263,7 @@ NODE: kind-worker2, POD IP:10.244.1.5
 The downside of using Nodeport service type is that the Host IP address must be known. Also Ports must tracked across
 all applications. A nodeport deployment will fail if it can not allocate the requested port.
 
-===  Endpoints
 
-===  Endpoint Slices
 
 === Cluster IP
 
@@ -562,8 +560,6 @@ Subsets:
 Events:  <none>
 ----
 
-===  LoadBalancer
-
 === Headless Service
 
 headless Services allows developers to deploy multplie copies of a pod in a deployment, instead of a ClusterIP
@@ -637,6 +633,200 @@ Subsets:
 
 Events:  <none>
 ----
+
+===  Endpoints
+
+Before we move onto Loadbalancers let's discuss Endpoints some more.
+
+Endpoints map to pods to Services via labels.
+
+[source,bash]
+----
+kubectl get endpoints clusterip-service
+NAME                ENDPOINTS                                                     AGE
+clusterip-service   10.244.1.5:8080,10.244.2.7:8080,10.244.2.8:8080 + 1 more...   135m
+----
+
+[source,bash]
+----
+ kubectl describe endpoints clusterip-service
+Name:         clusterip-service
+Namespace:    default
+Labels:       app=app
+Annotations:  endpoints.kubernetes.io/last-change-trigger-time: 2021-01-30T18:51:36Z
+Subsets:
+  Addresses:          10.244.1.5,10.244.2.7,10.244.2.8,10.244.3.9
+  NotReadyAddresses:  <none>
+  Ports:
+    Name     Port  Protocol
+    ----     ----  --------
+    <unset>  8080  TCP
+
+Events:
+  Type     Reason                  Age   From                 Message
+  ----     ------                  ----  ----                 -------
+----
+
+Let's remove the app label and see what happens.
+
+In a seperate terminal run this command
+[source,bash]
+----
+kubectl get pods -w
+----
+
+And in another seperate terminal
+[source,bash]
+----
+kubectl get endpoints -w
+----
+
+Let us get a pod name
+
+[source,bash]
+----
+ kubectl get pods -l app=app -o wide
+NAME                   READY   STATUS    RESTARTS   AGE   IP           NODE           NOMINATED NODE   READINESS GATES
+app-5586fc9d77-7frts   1/1     Running   0          19m   10.244.1.5   kind-worker2   <none>           <none>
+app-5586fc9d77-mxhgw   1/1     Running   0          19m   10.244.3.9   kind-worker3   <none>           <none>
+app-5586fc9d77-qpxwk   1/1     Running   0          20m   10.244.2.7   kind-worker    <none>           <none>
+app-5586fc9d77-tpz8q   1/1     Running   0          19m   10.244.2.8   kind-worker    <none>           <none>
+----
+
+With `kubectl label` we can alter the pod `app-5586fc9d77-7frts` `app=app` label.
+
+[source,bash]
+----
+ kubectl label pod app-5586fc9d77-7frts app=nope --overwrite
+pod/app-5586fc9d77-7frts labeled
+----
+
+Both Watch commands on Endpoints and Pods should see some changes for the same reason.
+
+The Endpoints controller notice a change to the pods with the label app=app and so did the Deployment controller.
+
+So Kubernetes did what Kubernetes does, it made the real state reflect the desired state.
+
+[source,bash]
+----
+kubectl get pods -w
+NAME                   READY   STATUS    RESTARTS   AGE
+app-5586fc9d77-7frts   1/1     Running   0          21m
+app-5586fc9d77-mxhgw   1/1     Running   0          21m
+app-5586fc9d77-qpxwk   1/1     Running   0          22m
+app-5586fc9d77-tpz8q   1/1     Running   0          21m
+dnsutils               1/1     Running   3          3h1m
+postgres-0             1/1     Running   0          3h
+postgres-1             1/1     Running   0          3h
+app-5586fc9d77-7frts   1/1     Running   0          22m
+app-5586fc9d77-7frts   1/1     Running   0          22m
+app-5586fc9d77-6dcg2   0/1     Pending   0          0s
+app-5586fc9d77-6dcg2   0/1     Pending   0          0s
+app-5586fc9d77-6dcg2   0/1     ContainerCreating   0          0s
+app-5586fc9d77-6dcg2   0/1     Running             0          2s
+app-5586fc9d77-6dcg2   1/1     Running             0          7s
+----
+
+The deployment has 4 pods but our relabeled pod still exists `app-5586fc9d77-7frts`
+
+[source,bash]
+----
+kubectl get pods
+NAME                   READY   STATUS    RESTARTS   AGE
+app-5586fc9d77-6dcg2   1/1     Running   0          4m51s
+app-5586fc9d77-7frts   1/1     Running   0          27m
+app-5586fc9d77-mxhgw   1/1     Running   0          27m
+app-5586fc9d77-qpxwk   1/1     Running   0          28m
+app-5586fc9d77-tpz8q   1/1     Running   0          27m
+dnsutils               1/1     Running   3          3h6m
+postgres-0             1/1     Running   0          3h6m
+postgres-1             1/1     Running   0          3h6m
+
+----
+
+The pod `app-5586fc9d77-6dcg2` now is part of the Deployment and endpoint object with IP address `10.244.1.6`.
+
+[source,bash]
+----
+kubectl get pods app-5586fc9d77-6dcg2 -o wide
+NAME                   READY   STATUS    RESTARTS   AGE    IP           NODE           NOMINATED NODE   READINESS GATES
+app-5586fc9d77-6dcg2   1/1     Running   0          3m6s   10.244.1.6   kind-worker2   <none>           <none>
+----
+[source,bash]
+----
+ kubectl describe endpoints clusterip-service
+Name:         clusterip-service
+Namespace:    default
+Labels:       app=app
+Annotations:  endpoints.kubernetes.io/last-change-trigger-time: 2021-01-30T19:14:23Z
+Subsets:
+  Addresses:          10.244.1.6,10.244.2.7,10.244.2.8,10.244.3.9
+  NotReadyAddresses:  <none>
+  Ports:
+    Name     Port  Protocol
+    ----     ----  --------
+    <unset>  8080  TCP
+
+Events:
+  Type     Reason                  Age   From                 Message
+  ----     ------                  ----  ----                 -------
+----
+
+
+===  Endpoint Slices
+
+EndpointSlices track network endpoints within a Kubernetes cluster for a service. They provide a
+scalable alternative to Endpoints.
+
+[source,bash]
+----
+ kubectl get endpointslice
+NAME                      ADDRESSTYPE   PORTS   ENDPOINTS                                      AGE
+clusterip-service-l2n9q   IPv4          8080    10.244.2.7,10.244.2.8,10.244.1.5 + 1 more...   135m
+----
+
+[source,bash]
+----
+ kubectl describe endpointslice clusterip-service-l2n9q
+Name:         clusterip-service-l2n9q
+Namespace:    default
+Labels:       endpointslice.kubernetes.io/managed-by=endpointslice-controller.k8s.io
+              kubernetes.io/service-name=clusterip-service
+Annotations:  endpoints.kubernetes.io/last-change-trigger-time: 2021-01-30T18:51:36Z
+AddressType:  IPv4
+Ports:
+  Name     Port  Protocol
+  ----     ----  --------
+  <unset>  8080  TCP
+Endpoints:
+  - Addresses:  10.244.2.7
+    Conditions:
+      Ready:    true
+    Hostname:   <unset>
+    TargetRef:  Pod/app-5586fc9d77-qpxwk
+    Topology:   kubernetes.io/hostname=kind-worker
+  - Addresses:  10.244.2.8
+    Conditions:
+      Ready:    true
+    Hostname:   <unset>
+    TargetRef:  Pod/app-5586fc9d77-tpz8q
+    Topology:   kubernetes.io/hostname=kind-worker
+  - Addresses:  10.244.1.5
+    Conditions:
+      Ready:    true
+    Hostname:   <unset>
+    TargetRef:  Pod/app-5586fc9d77-7frts
+    Topology:   kubernetes.io/hostname=kind-worker2
+  - Addresses:  10.244.3.9
+    Conditions:
+      Ready:    true
+    Hostname:   <unset>
+    TargetRef:  Pod/app-5586fc9d77-mxhgw
+    Topology:   kubernetes.io/hostname=kind-worker3
+Events:         <none>
+----
+
+===  LoadBalancer
 
 === External Service
 
@@ -713,7 +903,6 @@ external-service.default.svc.cluster.local. 30 IN CNAME github.com.
 Received 126 bytes from 10.96.0.10#53 in 0 ms
 
 ----
-
 
 == Deploy an Ingress Controller
 
