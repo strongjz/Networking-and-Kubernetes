@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+spec:
+  selector:
+    matchLabels:
+      app: app
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: app
+    spec:
+      containers:
+      - name: go-web
+        image: strongjz/go-web:v0.0.2
+        ports:
+          - containerPort: 8080
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        env:
+          - name: DB_HOST
+            value: "postgres"
+          - name: DB_USER
+            value: "postgres"
+          - name: DB_PASSWORD
+            value: "mysecretpassword"
+          - name: DB_PORT
+            value: "5432"
