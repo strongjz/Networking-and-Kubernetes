@@ -1,15 +1,14 @@
+---
 apiVersion: v1
 kind: Service
 metadata:
-  name: loadbalancer-service
+  name: clusterip-service
   labels:
     app: app
 spec:
   selector:
     app: app
   ports:
-    - name: service-port
-      protocol: TCP
+    - protocol: TCP
       port: 80
       targetPort: 8080
-  type: LoadBalancer

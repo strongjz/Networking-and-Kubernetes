@@ -17,6 +17,13 @@ func healthz(w http.ResponseWriter, _ *http.Request) {
 	fmt.Fprintf(w, "Healthy")
 }
 
+func host(w http.ResponseWriter, _ *http.Request) {
+	node := os.Getenv("MY_NODE_NAME")
+	podIP := os.Getenv("MY_POD_IP")
+
+	fmt.Fprintf(w,"NODE: %v, POD IP:%v",node, podIP)
+}
+
 func dataHandler(w http.ResponseWriter, _ *http.Request) {
 	db := CreateCon()
 
@@ -34,6 +41,8 @@ func main() {
 	http.HandleFunc("/healthz", healthz)
 
 	http.HandleFunc("/data", dataHandler)
+
+	http.HandleFunc("/host", host)
 
 	http.ListenAndServe("0.0.0.0:8080", nil)
 }

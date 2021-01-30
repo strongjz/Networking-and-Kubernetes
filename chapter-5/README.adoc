@@ -1,0 +1,515 @@
+Tools Needed:
+- Docker
+- Kind
+
+Docker install can be found https://docs.docker.com/engine/install/[here]
+
+Kind install can be found https://kind.sigs.k8s.io/docs/user/quick-start/#installation[here]
+
+Steps
+1. Deploy Kind Cluster with ingress enabled
+2. Explore StatefulSets
+3. Deploy Kubernetes Services
+4. Deploy an Ingress Controller
+5. Service Mesh
+6. Clean up 
+
+We will explore these Kubernetes Networking Abstractions
+
+StatefulSets
+
+Services
+
+- NodePort
+- Cluster
+-  LoadBalancer
+- Headless
+- Endpoints
+- Endpoint Slices
+
+Ingress
+
+- Ingress Controller
+- Ingress rules
+
+Service Mesh
+
+- Linkerd
+- Istio
+
+=== Deploy Kind Cluster with ingress enabled
+
+With the kind cluster configuration yaml, we can use kind to create that cluster with the below command. If this is the first time running it, it will take some time to download all the docker images for the working and control plane docker images.
+
+[source,bash]
+----
+ kind create cluster --config=kind-ingress.yaml
+Creating cluster "kind" ...
+ ✓ Ensuring node image (kindest/node:v1.18.2) 🖼 
+ ✓ Preparing nodes 📦  
+ ✓ Writing configuration 📜 
+ ✓ Starting control-plane 🕹️ 
+ ✓ Installing CNI 🔌 
+ ✓ Installing StorageClass 💾 
+Set kubectl context to "kind-kind"
+You can now use your cluster with:
+
+kubectl cluster-info --context kind-kind
+
+Have a question, bug, or feature request? Let us know! https://kind.sigs.k8s.io/#community 🙂
+
+----
+
+dnsutils is used for https://github.com/kubernetes/kubernetes/tree/master/test/images[kubernetes end to end testing]
+
+[source,bash]
+----
+kubectl apply -f dnsutils.yaml 
+ 
+pod/dnsutils created
+
+kubectl get pods
+NAME       READY   STATUS    RESTARTS   AGE
+dnsutils   1/1     Running   0          9s
+----
+
+=== Explore StatefulSets
+
+StatefulSets are valuable for applications that require: 
+
+* Stable, unique network identifiers.
+* Stable, persistent storage.
+* Ordered, graceful deployment and scaling.
+* Ordered, automated rolling updates.
+
+Our Database for the Golang Minimal web server is deployed as a statefulset. The database has a service, a configmap for the postgres username, password and test database name and a statefulset
+for the containers running postgres. 
+
+Let us deploy it now. 
+
+[source,bash]
+----
+kubectl apply -f database.yaml
+service/postgres created
+configmap/postgres-config created
+statefulset.apps/postgres created
+----
+
+With the replica set to two, we see the statefulset deploy postgres-0 and postpres-1, in that order. 
+
+Let us examine the dns and network ramifications of using a statefulset. 
+
+[source,bash]
+----
+kubectl get pods -o wide
+NAME         READY   STATUS    RESTARTS   AGE   IP           NODE           NOMINATED NODE   READINESS GATES
+dnsutils     1/1     Running   0          15m   10.244.3.2   kind-worker3   <none>           <none>
+postgres-0   1/1     Running   0          15m   10.244.1.3   kind-worker2   <none>           <none>
+postgres-1   1/1     Running   0          14m   10.244.2.3   kind-worker    <none>           <none>
+----
+
+Two pods for our postgres statefulset were deployed with names, postgres-0 and 1, with IP address 10.244.1.3 and 10
+.244.2.3 respectively.
+
+[source,bash ]
+----
+kubectl get svc postgres
+NAME       TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)    AGE
+postgres   ClusterIP   10.105.214.153   <none>        5432/TCP   23m
+----
+
+Using our dnsutils image we can see that the DNS names for the statefulsets will return those IP Addresses along
+with the cluster IP of the postgres service. 
+
+[source,bash]
+----
+kubectl exec dnsutils -- host postgres-0.postgres.default.svc.cluster.local.
+postgres-0.postgres.default.svc.cluster.local has address 10.244.1.3
+
+kubectl exec dnsutils -- host postgres-1.postgres.default.svc.cluster.local.
+postgres-1.postgres.default.svc.cluster.local has address 10.244.2.3
+
+kubectl exec dnsutils -- host postgres
+postgres.default.svc.cluster.local has address 10.105.214.153
+----
+
+=== Step 3. Deploy Kubernetes Services
+
+We will use the Golang minimal webserver for all the services examples. We have added additional functionality to the
+application to display which hosts and the pods ip in the Rest request.
+
+Before we deploy the services, we must first deploy the web server that the services will be routing traffic too.
+
+[source,bash]
+----
+ kubectl apply -f web.yaml
+deployment.apps/app created
+
+kubectl get pods -o wide
+NAME                  READY   STATUS    RESTARTS   AGE   IP           NODE           NOMINATED NODE   READINESS GATES
+app-9cc7d9df8-ffsm6   1/1     Running   0          49s   10.244.1.4   kind-worker2   <none>           <none>
+dnsutils              1/1     Running   0          49m   10.244.3.2   kind-worker3   <none>           <none>
+postgres-0            1/1     Running   0          48m   10.244.1.3   kind-worker2   <none>           <none>
+postgres-1            1/1     Running   0          48m   10.244.2.3   kind-worker    <none>           <none>
+
+----
+
+The Pods API address of our web server is `10.244.1.4`, which can be resolved in the cluster DNS.
+
+[source,bash]
+----
+kubectl exec dnsutils -- host  10.244.1.4
+4.1.244.10.in-addr.arpa domain name pointer 10-244-1-4.clusterip-service.default.svc.cluster.local.
+
+----
+
+Now that our applications is deployed we can begin exploring the various services available in the Kubernetes API.
+
+*ClusterIP Service*
+
+The first service will we will deploy is the default the ClusterIP service.
+
+[source,bash]
+----
+kubectl apply -f service-clusterip.yaml
+service/clusterip-service created
+
+kubectl describe svc clusterip-service
+Name:              clusterip-service
+Namespace:         default
+Labels:            app=app
+Annotations:       Selector:  app=app
+Type:              ClusterIP
+IP:                10.98.252.195
+Port:              <unset>  80/TCP
+TargetPort:        8080/TCP
+Endpoints:         <none>
+Session Affinity:  None
+Events:            <none>
+----
+
+The Cluster service name is resolvable in the network
+
+[source, bash]
+----
+kubectl exec dnsutils -- host clusterip-service
+clusterip-service.default.svc.cluster.local has address 10.98.252.195
+----
+
+Now we can reach the Host API endpoint with The Cluster IP, `10.98.252.195`, The Service Name, `clusterip-service`,
+or the directly with the pod IP `10.244.1.4` and port `8080`.
+
+[source,bash]
+----
+kubectl exec dnsutils -- wget -q -O- clusterip-service/host
+NODE: kind-worker2, POD IP:10.244.1.4
+
+kubectl exec dnsutils -- wget -q -O- 10.98.252.195/host
+NODE: kind-worker2, POD IP:10.244.1.4
+
+kubectl exec dnsutils -- wget -q -O- 10.244.1.4:8080/host
+NODE: kind-worker2, POD IP:10.244.1.4
+----
+
+Let us explore what the Service Cluster IP abstracted for us.
+
+* View veth pair and match with pod
+* View network namespace and match with pod
+* Verify pids on node match pods
+* Match services with iptables rules
+
+To explore this we need to know what Worker node the pod is deploy too, and that is `kind-worker2`
+
+[source,bash]
+----
+kubectl get pods -o wide
+NAME                  READY   STATUS    RESTARTS   AGE     IP           NODE           NOMINATED NODE   READINESS GATES
+app-9cc7d9df8-ffsm6   1/1     Running   0          7m23s   10.244.1.4   kind-worker2   <none>           <none>
+dnsutils              1/1     Running   0          55m     10.244.3.2   kind-worker3   <none>           <none>
+postgres-0            1/1     Running   0          55m     10.244.1.3   kind-worker2   <none>           <none>
+postgres-1            1/1     Running   0          54m     10.244.2.3   kind-worker    <none>           <none>
+
+----
+
+Since we are using kind we can use `docker ps` and `docker exec` to get infomation out of the running worker node
+`kind-worker-2`
+
+[source, bash]
+----
+docker ps
+CONTAINER ID   IMAGE                  COMMAND                  CREATED             STATUS             PORTS                                                                 NAMES
+df6df0736958   kindest/node:v1.18.2   "/usr/local/bin/entr…"   About an hour ago   Up About an hour                                                                         kind-worker2
+e242f11d2d00   kindest/node:v1.18.2   "/usr/local/bin/entr…"   About an hour ago   Up About an hour                                                                         kind-worker
+a76b32f37c0e   kindest/node:v1.18.2   "/usr/local/bin/entr…"   About an hour ago   Up About an hour                                                                         kind-worker3
+07ccb63d870f   kindest/node:v1.18.2   "/usr/local/bin/entr…"   About an hour ago   Up About an hour   0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp, 127.0.0.1:52321->6443/tcp   kind-control-plane
+----
+
+`kind-worker2` container id is `df6df0736958`, kind was kind enough to label each container with names so we can
+reference each worker node with its name `kind-worker2`
+
+[source,bash]
+----
+ docker exec -it kind-worker2 ip a
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host
+       valid_lft forever preferred_lft forever
+2: tunl0@NONE: <NOARP> mtu 1480 qdisc noop state DOWN group default qlen 1000
+    link/ipip 0.0.0.0 brd 0.0.0.0
+3: ip6tnl0@NONE: <NOARP> mtu 1452 qdisc noop state DOWN group default qlen 1000
+    link/tunnel6 :: brd ::
+4: veth608eddaa@if5: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default
+    link/ether 76:e6:c5:a4:71:7d brd ff:ff:ff:ff:ff:ff link-netns cni-c18c44cb-6c3e-c48d-b783-e7850d40e01c
+    inet 10.244.1.1/32 brd 10.244.1.1 scope global veth608eddaa
+       valid_lft forever preferred_lft forever
+5: veth45d1f3e8@if5: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default
+    link/ether 3e:39:16:38:3f:23 brd ff:ff:ff:ff:ff:ff link-netns cni-ec37f6e4-a1b5-9bc9-b324-59d612edb4d4
+    inet 10.244.1.1/32 brd 10.244.1.1 scope global veth45d1f3e8
+       valid_lft forever preferred_lft forever
+11: eth0@if12: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default
+    link/ether 02:42:ac:12:00:04 brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet 172.18.0.4/16 brd 172.18.255.255 scope global eth0
+       valid_lft forever preferred_lft forever
+    inet6 fc00:f853:ccd:e793::4/64 scope global nodad
+       valid_lft forever preferred_lft forever
+    inet6 fe80::42:acff:fe12:4/64 scope link
+       valid_lft forever preferred_lft forever
+----
+
+Let's see our Pods IP address and route table information
+
+[source,bash]
+----
+kubectl exec app-9cc7d9df8-ffsm6 ip a
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host
+       valid_lft forever preferred_lft forever
+2: tunl0@NONE: <NOARP> mtu 1480 qdisc noop state DOWN group default qlen 1000
+    link/ipip 0.0.0.0 brd 0.0.0.0
+3: ip6tnl0@NONE: <NOARP> mtu 1452 qdisc noop state DOWN group default qlen 1000
+    link/tunnel6 :: brd ::
+5: eth0@if5: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default
+    link/ether 3e:57:42:6e:cd:45 brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet 10.244.1.4/24 brd 10.244.1.255 scope global eth0
+       valid_lft forever preferred_lft forever
+    inet6 fe80::3c57:42ff:fe6e:cd45/64 scope link
+       valid_lft forever preferred_lft forever
+
+kubectl exec app-9cc7d9df8-ffsm6 ip r
+default via 10.244.1.1 dev eth0
+10.244.1.0/24 via 10.244.1.1 dev eth0 src 10.244.1.4
+10.244.1.1 dev eth0 scope link src 10.244.1.4
+
+----
+
+Our Pods IP Address is `10.244.1.4` running on interface `eth0@if5` with 10.244.1.1 as it's default route.
+
+That matches the interface 5 on the pod
+
+Let's check the Network namespace as well, from the node ip a output
+
+[source,bash]
+----
+cni-ec37f6e4-a1b5-9bc9-b324-59d612edb4d4
+----
+
+And `netns list` confirms that for us.
+
+[source,bash]
+----
+docker exec -it kind-worker2 /usr/sbin/ip netns list
+cni-ec37f6e4-a1b5-9bc9-b324-59d612edb4d4 (id: 2)
+cni-c18c44cb-6c3e-c48d-b783-e7850d40e01c (id: 1)
+----
+
+
+Let's see what process/es run inside that network namespace
+
+[source,bash]
+----
+ docker exec -it kind-worker2 /usr/sbin/ip netns pid cni-ec37f6e4-a1b5-9bc9-b324-59d612edb4d4
+4687
+4737
+----
+
+Let's grep for each process id
+
+[source,bash]
+----
+docker exec -it kind-worker2 ps aux | grep 4687
+root      4687  0.0  0.0    968     4 ?        Ss   17:00   0:00 /pause
+
+docker exec -it kind-worker2 ps aux | grep 4737
+root      4737  0.0  0.0 708376  6368 ?        Ssl  17:00   0:00 /opt/web-server
+----
+
+
+`4737` is the process id of our Web server container running on the kind-worker2
+
+[source,bash]
+----
+docker exec -it kind-worker2 iptables -L
+Chain INPUT (policy ACCEPT)
+target     prot opt source               destination
+KUBE-SERVICES  all  --  anywhere             anywhere             ctstate NEW /* kubernetes service portals */
+KUBE-EXTERNAL-SERVICES  all  --  anywhere             anywhere             ctstate NEW /* kubernetes externally-visible service portals */
+KUBE-FIREWALL  all  --  anywhere             anywhere
+
+Chain FORWARD (policy ACCEPT)
+target     prot opt source               destination
+KUBE-FORWARD  all  --  anywhere             anywhere             /* kubernetes forwarding rules */
+KUBE-SERVICES  all  --  anywhere             anywhere             ctstate NEW /* kubernetes service portals */
+
+Chain OUTPUT (policy ACCEPT)
+target     prot opt source               destination
+KUBE-SERVICES  all  --  anywhere             anywhere             ctstate NEW /* kubernetes service portals */
+KUBE-FIREWALL  all  --  anywhere             anywhere
+
+Chain KUBE-EXTERNAL-SERVICES (1 references)
+target     prot opt source               destination
+
+Chain KUBE-FIREWALL (2 references)
+target     prot opt source               destination
+DROP       all  --  anywhere             anywhere             /* kubernetes firewall for dropping marked packets */ mark match 0x8000/0x8000
+
+Chain KUBE-FORWARD (1 references)
+target     prot opt source               destination
+DROP       all  --  anywhere             anywhere             ctstate INVALID
+ACCEPT     all  --  anywhere             anywhere             /* kubernetes forwarding rules */ mark match 0x4000/0x4000
+ACCEPT     all  --  anywhere             anywhere             /* kubernetes forwarding conntrack pod source rule */ ctstate RELATED,ESTABLISHED
+ACCEPT     all  --  anywhere             anywhere             /* kubernetes forwarding conntrack pod destination rule */ ctstate RELATED,ESTABLISHED
+
+Chain KUBE-KUBELET-CANARY (0 references)
+target     prot opt source               destination
+
+Chain KUBE-PROXY-CANARY (0 references)
+target     prot opt source               destination
+
+Chain KUBE-SERVICES (3 references)
+target     prot opt source               destination
+----
+
+Retrieve the Cluster IP of the clusterip-service
+
+[source,bash]
+----
+kubectl get svc clusterip-service
+NAME                TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)    AGE
+clusterip-service   ClusterIP   10.98.252.195    <none>        80/TCP     57m
+----
+
+Now use the cluster ip of the service, `10.98.252.195` , to find our iptables rule.
+
+[source,bash]
+----
+docker exec -it  kind-worker2 iptables -L -t nat | grep 10.98.252.195
+KUBE-MARK-MASQ  tcp  -- !10.244.0.0/16        10.98.252.195        /* default/clusterip-service: cluster IP */ tcp dpt:80
+KUBE-SVC-V7R3EVKW3DT43QQM  tcp  --  anywhere             10.98.252.195        /* default/clusterip-service: cluster IP */ tcp dpt:80
+----
+
+
+List out all the rules on the chain `KUBE-SVC-V7R3EVKW3DT43QQM`
+
+[source,bash]
+----
+docker exec -it  kind-worker2 iptables -t nat -L KUBE-SVC-V7R3EVKW3DT43QQM
+Chain KUBE-SVC-V7R3EVKW3DT43QQM (1 references)
+target     prot opt source               destination
+KUBE-SEP-THJR2P3Q4C2QAEPT  all  --  anywhere             anywhere             /* default/clusterip-service: */
+----
+
+The endpoint for the services are map to these chains `KUBE-SEP-THJR2P3Q4C2QAEPT`
+
+Now we can see what the rules for this chain are in iptables
+
+[source,bash]
+----
+docker exec -it kind-worker2 iptables -L KUBE-SEP-THJR2P3Q4C2QAEPT -t nat
+Chain KUBE-SEP-THJR2P3Q4C2QAEPT (1 references)
+target     prot opt source               destination
+KUBE-MARK-MASQ  all  --  10.244.1.4           anywhere             /* default/clusterip-service: */
+DNAT       tcp  --  anywhere             anywhere             /* default/clusterip-service: */ tcp to:10.244.1.4:8080
+----
+
+
+10.244.1.4:8080 is one of the services endpoints, aka a pod backing the service
+
+[source,bash]
+----
+kubectl get ep clusterip-service
+NAME                ENDPOINTS                         AGE
+clusterip-service   10.244.1.4:8080                   62m
+
+kubectl describe ep clusterip-service
+Name:         clusterip-service
+Namespace:    default
+Labels:       app=app
+Annotations:  <none>
+Subsets:
+  Addresses:          10.244.1.4
+  NotReadyAddresses:  <none>
+  Ports:
+    Name     Port  Protocol
+    ----     ----  --------
+    <unset>  8080  TCP
+
+Events:  <none>
+----
+
+*Headless Service*
+
+[source,bash]
+----
+kubectl apply -f service-headless.yml
+----
+
+External Service
+
+[source,bash]
+----
+kubectl apply -f external-headless.yml
+----
+
+Verify everything deploy successfully
+
+Resolve Cluster IP service
+
+[source,bash]
+----
+ kubectl exec -it dnsutils -- host -v -t a clusterip-service
+----
+
+
+Resolve Headless service
+
+[source,bash]
+----
+kubectl exec -it dnsutils – host -v -t a headless-service
+----
+
+Resolve External service
+
+[source,bash]
+----
+kubectl exec -it dnsutils – host -v -t a external-service
+----
+
+=== Step 4. Deploy an Ingress Controller
+
+=== Step 5. Service Mesh
+
+
+=== Step 6. Clean up
+
+Since we have not deployed anything external to the cluster, we can just delete our kind cluster
+
+[source,bash]
+----
+kind delete cluster --name kind
+Deleting cluster "kind" ...
+----
