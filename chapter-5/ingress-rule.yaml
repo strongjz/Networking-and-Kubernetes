@@ -4,13 +4,11 @@ metadata:
   name: ingress-resource
   annotations:
     kubernetes.io/ingress.class: nginx
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
 spec:
   rules:
     - http:
         paths:
-          - path: /host(/|$)(.*)
+          - path: /host
             backend:
-              serviceName: host-service
+              serviceName: clusterip-service
               servicePort: 8080

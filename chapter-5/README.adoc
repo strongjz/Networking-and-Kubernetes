@@ -1098,9 +1098,119 @@ Received 126 bytes from 10.96.0.10#53 in 0 ms
 
 === Deploy an Ingress Controller
 
+When we deployed our kind cluster, we added several options to allow us to deploy an ingress controller.
+
+* extraPortMappings allow the local host to make requests to the Ingress controller over ports 80/443
+* node-labels only allow the ingress controller to run on a specific node(s) matching the label selector
+
+Let's Deploy the NGINX Ingress Controller
+
+[source,bash]
+----
+kubectl apply -f ingress.yaml
+namespace/ingress-nginx created
+serviceaccount/ingress-nginx created
+configmap/ingress-nginx-controller created
+clusterrole.rbac.authorization.k8s.io/ingress-nginx created
+clusterrolebinding.rbac.authorization.k8s.io/ingress-nginx created
+role.rbac.authorization.k8s.io/ingress-nginx created
+rolebinding.rbac.authorization.k8s.io/ingress-nginx created
+service/ingress-nginx-controller-admission created
+service/ingress-nginx-controller created
+deployment.apps/ingress-nginx-controller created
+validatingwebhookconfiguration.admissionregistration.k8s.io/ingress-nginx-admission created
+serviceaccount/ingress-nginx-admission created
+clusterrole.rbac.authorization.k8s.io/ingress-nginx-admission created
+clusterrolebinding.rbac.authorization.k8s.io/ingress-nginx-admission created
+role.rbac.authorization.k8s.io/ingress-nginx-admission created
+rolebinding.rbac.authorization.k8s.io/ingress-nginx-admission created
+job.batch/ingress-nginx-admission-create created
+job.batch/ingress-nginx-admission-patch created
+----
+
+As with all deployments, we must wait for the Controller to be ready before we can use it.
+
+[source,bash]
+----
+kubectl wait --namespace ingress-nginx \
+>   --for=condition=ready pod \
+>   --selector=app.kubernetes.io/component=controller \
+>   --timeout=90s
+pod/ingress-nginx-controller-76b5f89575-zps4k condition met
+----
+
+Now were ready to write some Ingress rules for our Applicaiton.
+
 === Deploy Ingress rules
 
+[source,bash]
+----
+kubectl apply -f ingress-rule.yaml
+ingress.extensions/ingress-resource created
+
+kubectl get ingress
+NAME               CLASS    HOSTS   ADDRESS   PORTS   AGE
+ingress-resource   <none>   *                 80      4s
+----
+
+With describe we can see all the backends that map to clusterip service and the pods.
+
+[source,bash]
+----
+ kubectl describe ingress
+Name:             ingress-resource
+Namespace:        default
+Address:
+Default backend:  default-http-backend:80 (<error: endpoints "default-http-backend" not found>)
+Rules:
+  Host        Path  Backends
+  ----        ----  --------
+  *
+              /host  clusterip-service:8080 (10.244.1.6:8080,10.244.1.7:8080,10.244.1.8:8080 + 7 more...)
+Annotations:  kubernetes.io/ingress.class: nginx
+Events:
+  Type    Reason  Age   From                      Message
+  ----    ------  ----  ----                      -------
+  Normal  Sync    17s   nginx-ingress-controller  Scheduled for sync
+
+----
+
+Our ingress rule is only for /host route, none others will reply.
+
+[source,bash]
+----
+curl localhost/host
+NODE: kind-worker2, POD IP:10.244.1.6
+curl localhost/healthz
+
+----
+
+Now we can see how powerful ingresses are, let us deploy a second deploy and cluster IP service.
+
+[source,bash]
+----
+kubectl apply -f ingress-example-2.yaml
+deployment.apps/app2 created
+service/clusterip-service-2 configured
+ingress.extensions/ingress-resource-2 configured
+
+----
+
+Now both the /host and /data work but are going to separate services.
+
+[source,bash]
+----
+curl localhost/host
+NODE: kind-worker2, POD IP:10.244.1.6
+
+curl localhost/data
+Database Connected
+----
+
 == Service Mesh
+
+
+
 
 === Clean up
 
