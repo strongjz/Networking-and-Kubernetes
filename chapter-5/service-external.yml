@@ -4,4 +4,4 @@ metadata:
   name: external-service
 spec:
   type: ExternalName
-  externalName: google.com
+  externalName: github.com

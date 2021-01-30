@@ -3,3 +3,4 @@
 ./vagrant-docker/.vagrant/*
 ./vagrant-host-2/.vagrant/*
 advanced_networking_code_examples
+.DS_Store

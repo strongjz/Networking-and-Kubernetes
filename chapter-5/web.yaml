@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: go-web
-        image: strongjz/go-web:v0.0.5
+        image: strongjz/go-web:v0.0.6
         ports:
           - containerPort: 8080
         livenessProbe:
