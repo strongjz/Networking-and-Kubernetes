@@ -49,7 +49,7 @@ Ingress
 Service Mesh
 
 - Linkerd
-- Istio
+
 
 == Deploy Kind Cluster with ingress enabled
 
@@ -74,7 +74,7 @@ Have a question, bug, or feature request? Let us know! https://kind.sigs.k8s.io/
 
 ----
 
-dnsutils is used for https://github.com/kubernetes/kubernetes/tree/master/test/images[kubernetes end to end testing]
+dnsutils is used for https://github.com/kubernetes/kubernetes/tree/master/test/images[kubernetes end-to-end testing]
 
 [source,bash]
 ----
@@ -319,7 +319,7 @@ Let us explore what the Service Cluster IP abstracted for us.
 * Verify pids on node match pods
 * Match services with iptables rules
 
-To explore this we need to know what Worker node the pod is deploy too, and that is `kind-worker2`
+To explore this we need to know what Worker node the pod is deployed too, and that is `kind-worker2`
 
 [source,bash]
 ----
@@ -332,7 +332,7 @@ postgres-1            1/1     Running   0          54m     10.244.2.3   kind-wor
 
 ----
 
-Since we are using kind we can use `docker ps` and `docker exec` to get infomation out of the running worker node
+Since we are using kind we can use `docker ps` and `docker exec` to get information out of the running worker node
 `kind-worker-2`
 
 [source, bash]
@@ -561,9 +561,9 @@ Events:  <none>
 
 === Headless Service
 
-headless Services allows developers to deploy multplie copies of a pod in a deployment, instead of a ClusterIP
-returned in the DNS resolution, all the IP addresses of the endpoints are returned in the Query for the client to
-pick one.
+headless Services allows developers to deploy multiple copies of a pod in a deployment, instead of a ClusterIP
+returned, all the IP addresses of the endpoints are returned in the query and it is for the
+client to pick one to use.
 
 Let us scale up the Deployment of our web app.
 
@@ -637,7 +637,7 @@ Events:  <none>
 
 Before we move onto Loadbalancers let's discuss Endpoints some more.
 
-Endpoints map to pods to Services via labels.
+Endpoints map pods to Services via labels.
 
 [source,bash]
 ----
@@ -832,7 +832,7 @@ their clusters.
 
 This example has been modified from https://kind.sigs.k8s.io/docs/user/loadbalancer[Kind example deployment]
 
-Deploy a seperate namespace for MetalLB
+Deploy a separate namespace for MetalLB.
 
 [source,bash]
 ----
@@ -900,7 +900,8 @@ to use 172.18.255.200 to 172.18.255.250 by creating the configmap.
 
 The config map would look like this
 
-```yaml
+[source,yaml]
+----
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -913,7 +914,7 @@ data:
       protocol: layer2
       addresses:
       - 172.18.255.200-172.18.255.250
-```
+----
 
 [source,bash]
 ----
@@ -1023,14 +1024,6 @@ Events:  <none>
 
 External Service allows developers to map a Service to a DNS name.
 
-DNS will try all the search as seen in the example below.
-```
-Trying "github.com.default.svc.cluster.local"
-Trying "github.com.svc.cluster.local"
-Trying "github.com.cluster.local"
-Trying "github.com"
-```
-
 [source,bash]
 ----
  kubectl exec -it dnsutils -- host -v -t a github.com
@@ -1050,7 +1043,20 @@ github.com.             30      IN      A       140.82.112.3
 Received 54 bytes from 10.96.0.10#53 in 18 ms
 ----
 
+DNS will try all the search as seen in the example below.
+
+[source]
+----
+Trying "github.com.default.svc.cluster.local"
+Trying "github.com.svc.cluster.local"
+Trying "github.com.cluster.local"
+Trying "github.com"
+----
+
+
+
 Now if we deploy the External Service
+
 [source,bash]
 ----
 kubectl apply -f service-external.yml
@@ -1140,7 +1146,7 @@ kubectl wait --namespace ingress-nginx \
 pod/ingress-nginx-controller-76b5f89575-zps4k condition met
 ----
 
-Now were ready to write some Ingress rules for our Applicaiton.
+Now were ready to write some Ingress rules for our Application.
 
 === Deploy Ingress rules
 
@@ -1212,7 +1218,7 @@ Database Connected
 
 First thing we need to do if you do not have, is to install the Linkerd CLI, those directions are https://linkerd.io/2/getting-started/[here]
 
-You're choices are curl to bash or brew if you're on mac.
+Your choices are curl to bash or brew if you're on mac.
 
 [source,bash]
 ----
@@ -1437,7 +1443,7 @@ linkerd-grafana
 Status check results are √
 ----
 
-Everythings looks with our install of Linkerd
+Everything looks with our install of Linkerd
 
 [source,bash]
 ----
@@ -1478,7 +1484,7 @@ Our clusterip-service is not part of the Linkerd service mesh. We need to use th
 to the mesh. It accomplishes this by watching for a specific annotation that can either be added with linkerd inject or
 by hand to the pod's spec.
 
-Let us remove some of the older exercise's resources for clarity.
+Let us remove some older exercise's resources for clarity.
 
 [source,bash]
 ----
@@ -1558,7 +1564,7 @@ Events:
   Normal  ScalingReplicaSet  3m54s  deployment-controller   Scaled down replica set app-5586fc9d77 to 0
 ----
 
-If we navigate to the our app in the Dashboard we can see that our Deployment is part of the Linkerd Servicemesh now.
+If we navigate to the app in the Dashboard we can see that our Deployment is part of the Linkerd Servicemesh now.
 
 http://localhost:50750/namespaces/default/deployments/app
 
@@ -1608,7 +1614,7 @@ Let us send a few hundred queries and see the stats.
 bash-5.0#for i in `seq 1 100`;do curl http://clusterip-service/host && sleep 2; done
 ----
 
-In our terminal we can see all the liviness and readiness probes as well as our /host requests.
+In our terminal we can see all the liveliness and readiness probes as well as our /host requests.
 
 `tmp-shell` is our netshoot bash terminal with our for loop running.
 
