@@ -2,6 +2,7 @@ Tools Needed:
 
 - Docker
 - Kind
+- Linkerd
 
 Commands:
 
@@ -1209,6 +1210,436 @@ Database Connected
 
 == Service Mesh
 
+First thing we need to do if you do not have, is to install the Linkerd CLI, those directions are https://linkerd.io/2/getting-started/[here]
+
+You're choices are curl to bash or brew if you're on mac.
+
+[source,bash]
+----
+curl -sL https://run.linkerd.io/install | sh
+
+OR
+
+brew install linkerd
+
+linkerd version
+Client version: stable-2.9.2
+Server version: unavailable
+----
+
+Pre-flight checklist
+
+[source,bash]
+----
+ linkerd check --pre
+kubernetes-api
+--------------
+√ can initialize the client
+√ can query the Kubernetes API
+
+kubernetes-version
+------------------
+√ is running the minimum Kubernetes API version
+√ is running the minimum kubectl version
+
+pre-kubernetes-setup
+--------------------
+√ control plane namespace does not already exist
+√ can create non-namespaced resources
+√ can create ServiceAccounts
+√ can create Services
+√ can create Deployments
+√ can create CronJobs
+√ can create ConfigMaps
+√ can create Secrets
+√ can read Secrets
+√ can read extension-apiserver-authentication configmap
+√ no clock skew detected
+
+pre-kubernetes-capability
+-------------------------
+√ has NET_ADMIN capability
+√ has NET_RAW capability
+
+linkerd-version
+---------------
+√ can determine the latest version
+√ cli is up-to-date
+
+Status check results are √
+----
+
+Then Install onto the cluster.
+
+[source,bash]
+----
+linkerd install | kubectl apply -f -
+namespace/linkerd created
+clusterrole.rbac.authorization.k8s.io/linkerd-linkerd-identity created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-identity created
+serviceaccount/linkerd-identity created
+clusterrole.rbac.authorization.k8s.io/linkerd-linkerd-controller created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-controller created
+serviceaccount/linkerd-controller created
+clusterrole.rbac.authorization.k8s.io/linkerd-linkerd-destination created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-destination created
+serviceaccount/linkerd-destination created
+role.rbac.authorization.k8s.io/linkerd-heartbeat created
+rolebinding.rbac.authorization.k8s.io/linkerd-heartbeat created
+serviceaccount/linkerd-heartbeat created
+role.rbac.authorization.k8s.io/linkerd-web created
+rolebinding.rbac.authorization.k8s.io/linkerd-web created
+clusterrole.rbac.authorization.k8s.io/linkerd-linkerd-web-check created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-web-check created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-web-admin created
+serviceaccount/linkerd-web created
+customresourcedefinition.apiextensions.k8s.io/serviceprofiles.linkerd.io created
+customresourcedefinition.apiextensions.k8s.io/trafficsplits.split.smi-spec.io created
+clusterrole.rbac.authorization.k8s.io/linkerd-linkerd-proxy-injector created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-proxy-injector created
+serviceaccount/linkerd-proxy-injector created
+secret/linkerd-proxy-injector-k8s-tls created
+mutatingwebhookconfiguration.admissionregistration.k8s.io/linkerd-proxy-injector-webhook-config created
+clusterrole.rbac.authorization.k8s.io/linkerd-linkerd-sp-validator created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-sp-validator created
+serviceaccount/linkerd-sp-validator created
+secret/linkerd-sp-validator-k8s-tls created
+validatingwebhookconfiguration.admissionregistration.k8s.io/linkerd-sp-validator-webhook-config created
+clusterrole.rbac.authorization.k8s.io/linkerd-linkerd-tap created
+clusterrole.rbac.authorization.k8s.io/linkerd-linkerd-tap-admin created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-tap created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-tap-auth-delegator created
+serviceaccount/linkerd-tap created
+rolebinding.rbac.authorization.k8s.io/linkerd-linkerd-tap-auth-reader created
+secret/linkerd-tap-k8s-tls created
+apiservice.apiregistration.k8s.io/v1alpha1.tap.linkerd.io created
+podsecuritypolicy.policy/linkerd-linkerd-control-plane created
+role.rbac.authorization.k8s.io/linkerd-psp created
+rolebinding.rbac.authorization.k8s.io/linkerd-psp created
+configmap/linkerd-config created
+secret/linkerd-identity-issuer created
+service/linkerd-identity created
+service/linkerd-identity-headless created
+deployment.apps/linkerd-identity created
+service/linkerd-controller-api created
+deployment.apps/linkerd-controller created
+service/linkerd-dst created
+service/linkerd-dst-headless created
+deployment.apps/linkerd-destination created
+cronjob.batch/linkerd-heartbeat created
+service/linkerd-web created
+deployment.apps/linkerd-web created
+deployment.apps/linkerd-proxy-injector created
+service/linkerd-proxy-injector created
+service/linkerd-sp-validator created
+deployment.apps/linkerd-sp-validator created
+service/linkerd-tap created
+deployment.apps/linkerd-tap created
+serviceaccount/linkerd-grafana created
+configmap/linkerd-grafana-config created
+service/linkerd-grafana created
+deployment.apps/linkerd-grafana created
+clusterrole.rbac.authorization.k8s.io/linkerd-linkerd-prometheus created
+clusterrolebinding.rbac.authorization.k8s.io/linkerd-linkerd-prometheus created
+serviceaccount/linkerd-prometheus created
+configmap/linkerd-prometheus-config created
+service/linkerd-prometheus created
+deployment.apps/linkerd-prometheus created
+secret/linkerd-config-overrides created
+----
+
+Validate the install
+
+[source,bash]
+----
+linkerd check
+kubernetes-api
+--------------
+√ can initialize the client
+√ can query the Kubernetes API
+
+kubernetes-version
+------------------
+√ is running the minimum Kubernetes API version
+√ is running the minimum kubectl version
+
+linkerd-existence
+-----------------
+√ 'linkerd-config' config map exists
+√ heartbeat ServiceAccount exist
+√ control plane replica sets are ready
+√ no unschedulable pods
+√ controller pod is running
+√ can initialize the client
+√ can query the control plane API
+
+linkerd-config
+--------------
+√ control plane Namespace exists
+√ control plane ClusterRoles exist
+√ control plane ClusterRoleBindings exist
+√ control plane ServiceAccounts exist
+√ control plane CustomResourceDefinitions exist
+√ control plane MutatingWebhookConfigurations exist
+√ control plane ValidatingWebhookConfigurations exist
+√ control plane PodSecurityPolicies exist
+
+linkerd-identity
+----------------
+√ certificate config is valid
+√ trust anchors are using supported crypto algorithm
+√ trust anchors are within their validity period
+√ trust anchors are valid for at least 60 days
+√ issuer cert is using supported crypto algorithm
+√ issuer cert is within its validity period
+√ issuer cert is valid for at least 60 days
+√ issuer cert is issued by the trust anchor
+
+linkerd-webhooks-and-apisvc-tls
+-------------------------------
+√ tap API server has valid cert
+√ tap API server cert is valid for at least 60 days
+√ proxy-injector webhook has valid cert
+√ proxy-injector cert is valid for at least 60 days
+√ sp-validator webhook has valid cert
+√ sp-validator cert is valid for at least 60 days
+
+linkerd-api
+-----------
+√ control plane pods are ready
+√ control plane self-check
+√ [kubernetes] control plane can talk to Kubernetes
+√ [prometheus] control plane can talk to Prometheus
+√ tap api service is running
+
+linkerd-version
+---------------
+√ can determine the latest version
+√ cli is up-to-date
+
+control-plane-version
+---------------------
+√ control plane is up-to-date
+√ control plane and cli versions match
+
+linkerd-prometheus
+------------------
+√ prometheus add-on service account exists
+√ prometheus add-on config map exists
+√ prometheus pod is running
+
+linkerd-grafana
+---------------
+√ grafana add-on service account exists
+√ grafana add-on config map exists
+√ grafana pod is running
+
+Status check results are √
+----
+
+Everythings looks with our install of Linkerd
+
+[source,bash]
+----
+kubectl -n linkerd get deploy
+NAME                     READY   UP-TO-DATE   AVAILABLE   AGE
+linkerd-controller       1/1     1            1           3m17s
+linkerd-destination      1/1     1            1           3m17s
+linkerd-grafana          1/1     1            1           3m16s
+linkerd-identity         1/1     1            1           3m17s
+linkerd-prometheus       1/1     1            1           3m16s
+linkerd-proxy-injector   1/1     1            1           3m17s
+linkerd-sp-validator     1/1     1            1           3m17s
+linkerd-tap              1/1     1            1           3m17s
+linkerd-web              1/1     1            1           3m17s
+----
+
+Let us pull up the Console
+
+[source,bash]
+----
+linkerd dashboard &
+[1] 49832
+Linkerd dashboard available at:
+http://localhost:50750
+Grafana dashboard available at:
+http://localhost:50750/grafana
+Opening Linkerd dashboard in the default browser
+----
+
+We can see all our deployed objects from the previous exercises.
+
+[#linkerd-dashboards]
+.Linkderd Dashboard
+image::./linkerd-dashboard.png[Linkderd Dashboard]
+
+
+Our clusterip-service is not part of the Linkerd service mesh. We need to use the proxy injector to add our service
+to the mesh. It accomplishes this by watching for a specific annotation that can either be added with linkerd inject or
+by hand to the pod's spec.
+
+Let us remove some of the older exercise's resources for clarity.
+
+[source,bash]
+----
+kubectl delete -f ingress-example-2.yaml
+deployment.apps "app2" deleted
+service "clusterip-service-2" deleted
+ingress.extensions "ingress-resource-2" deleted
+
+kubectl delete pods app-5586fc9d77-7frts
+pod "app-5586fc9d77-7frts" deleted
+
+kubectl delete -f ingress-rule.yaml
+ingress.extensions "ingress-resource" deleted
+----
+
+We can use the linkerd cli to inject the proper annotations into our deployment spec.
+
+[source,bash]
+----
+cat web.yaml | linkerd inject - | kubectl apply -f -
+
+deployment "app" injected
+
+deployment.apps/app configured
+----
+
+If we describe our app deployment we can see that Linkerd has injected new Annotations
+
+[source,bash]
+----
+kubectl describe deployment app
+Name:                   app
+Namespace:              default
+CreationTimestamp:      Sat, 30 Jan 2021 13:48:47 -0500
+Labels:                 <none>
+Annotations:            deployment.kubernetes.io/revision: 3
+Selector:               app=app
+Replicas:               1 desired | 1 updated | 1 total | 1 available | 0 unavailable
+StrategyType:           RollingUpdate
+MinReadySeconds:        0
+RollingUpdateStrategy:  25% max unavailable, 25% max surge
+Pod Template:
+  Labels:       app=app
+  Annotations:  linkerd.io/inject: enabled
+  Containers:
+   go-web:
+    Image:      strongjz/go-web:v0.0.6
+    Port:       8080/TCP
+    Host Port:  0/TCP
+    Liveness:   http-get http://:8080/healthz delay=5s timeout=1s period=5s #success=1 #failure=3
+    Readiness:  http-get http://:8080/ delay=5s timeout=1s period=5s #success=1 #failure=3
+    Environment:
+      MY_NODE_NAME:             (v1:spec.nodeName)
+      MY_POD_NAME:              (v1:metadata.name)
+      MY_POD_NAMESPACE:         (v1:metadata.namespace)
+      MY_POD_IP:                (v1:status.podIP)
+      MY_POD_SERVICE_ACCOUNT:   (v1:spec.serviceAccountName)
+      DB_HOST:                 postgres
+      DB_USER:                 postgres
+      DB_PASSWORD:             mysecretpassword
+      DB_PORT:                 5432
+    Mounts:                    <none>
+  Volumes:                     <none>
+Conditions:
+  Type           Status  Reason
+  ----           ------  ------
+  Available      True    MinimumReplicasAvailable
+  Progressing    True    NewReplicaSetAvailable
+OldReplicaSets:  <none>
+NewReplicaSet:   app-78dfbb4854 (1/1 replicas created)
+Events:
+  Type    Reason             Age    From                    Message
+  ----    ------             ----   ----                    -------
+  Normal  ScalingReplicaSet  4m4s   deployment-controller   Scaled down replica set app-5586fc9d77 to 1
+  Normal  ScalingReplicaSet  4m4s   deployment-controller   Scaled up replica set app-78dfbb4854 to 1
+  Normal  Injected           4m4s   linkerd-proxy-injector  Linkerd sidecar proxy injected
+  Normal  ScalingReplicaSet  3m54s  deployment-controller   Scaled down replica set app-5586fc9d77 to 0
+----
+
+If we navigate to the our app in the Dashboard we can see that our Deployment is part of the Linkerd Servicemesh now.
+
+http://localhost:50750/namespaces/default/deployments/app
+
+[#app-dashboards]
+.Web App Deployment Linkderd Dashboard
+image::./app-linkerd-dashboard.png[App Linkderd Dashboard]
+
+The CLI can also deploy our stats for us as well.
+
+[source,bash]
+----
+linkerd stat deployments -n default
+NAME   MESHED   SUCCESS      RPS   LATENCY_P50   LATENCY_P95   LATENCY_P99   TCP_CONN
+app       1/1   100.00%   0.4rps           1ms           1ms           1ms          1
+----
+
+Again let us scale up our deployment!
+[source,bash]
+----
+kubectl scale deploy app --replicas 10
+deployment.apps/app scaled
+----
+
+Navigate to the web browser and open this link, so we can watch the stats in real time. Select the default namespace
+and in Resources our deployment/app. Then click start for the web to start displaying the metrics.
+
+http://localhost:50750/top?namespace=default&resource=deployment%2Fapp
+
+[#app-stats]
+.Web App Dashboard
+image::./app-stats.png[App Stats Dashboard]
+
+
+In a separate terminal let's use the netshoot image, but this time running inside our kind cluster.
+
+[source,bash]
+----
+kubectl run tmp-shell --rm -i --tty --image nicolaka/netshoot -- /bin/bash
+If you don't see a command prompt, try pressing enter.
+bash-5.0#
+----
+
+Let us send a few hundred queries and see the stats.
+
+[source,bash]
+----
+bash-5.0#for i in `seq 1 100`;do curl http://clusterip-service/host && sleep 2; done
+----
+
+In our terminal we can see all the liviness and readiness probes as well as our /host requests.
+
+`tmp-shell` is our netshoot bash terminal with our for loop running.
+
+`10.244.2.1`, `10.244.3.1`, and `10.244.2.1` are the kubelet's of the hosts running our probes for us.
+
+[source,bash]
+----
+(press q to quit)
+(press a/LeftArrowKey to scroll left, d/RightArrowKey to scroll right)
+
+Source      Destination           Method      Path       Count    Best   Worst    Last  Success Rate
+10.244.2.1  app-8585c88ff4-8t8tm  GET         /              2   456µs   711µs   456µs       100.00%
+10.244.3.1  app-8585c88ff4-k98t7  GET         /              2   410µs   501µs   410µs       100.00%
+10.244.3.1  app-8585c88ff4-xdcp4  GET         /healthz       2   618µs   847µs   618µs       100.00%
+10.244.2.1  app-8585c88ff4-8t8tm  GET         /healthz       2   744µs   901µs   744µs       100.00%
+10.244.1.1  app-8585c88ff4-47p6d  GET         /              1   535µs   535µs   535µs       100.00%
+10.244.1.1  app-8585c88ff4-l5h2g  GET         /healthz       1   516µs   516µs   516µs       100.00%
+10.244.2.1  app-8585c88ff4-tr72b  GET         /healthz       1   905µs   905µs   905µs       100.00%
+tmp-shell   app-8585c88ff4-7w6f5  GET         /host          1   657µs   657µs   657µs       100.00%
+10.244.2.1  app-8585c88ff4-q46r9  GET         /healthz       1   612µs   612µs   612µs       100.00%
+10.244.3.1  app-8585c88ff4-k98t7  GET         /healthz       1   715µs   715µs   715µs       100.00%
+10.244.1.1  app-8585c88ff4-47p6d  GET         /healthz       1     1ms     1ms     1ms       100.00%
+10.244.2.1  app-8585c88ff4-7w6f5  GET         /              1     3ms     3ms     3ms       100.00%
+10.244.1.1  app-8585c88ff4-fh6mb  GET         /              1   401µs   401µs   401µs       100.00%
+10.244.2.1  app-8585c88ff4-7w6f5  GET         /healthz       1     1ms     1ms     1ms       100.00%
+10.244.3.1  app-8585c88ff4-2s6qv  GET         /healthz       1   519µs   519µs   519µs       100.00%
+10.244.3.1  app-8585c88ff4-2s6qv  GET         /              1   459µs   459µs   459µs       100.00%
+10.244.2.1  app-8585c88ff4-q46r9  GET         /              1   426µs   426µs   426µs       100.00%
+tmp-shell   app-8585c88ff4-xdcp4  GET         /host          1   437µs   437µs   437µs       100.00%
+10.244.1.1  app-8585c88ff4-fh6mb  GET         /healthz       1   300µs   300µs   300µs       100.00%
+----
 
 
 
