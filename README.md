@@ -1,4 +1,4 @@
-# Kubernetes Networking Code Examples
+# Networking and Kubernetes Code Examples
 
 ### Chapter 1
 - [Golang Minimal Web Server](chapter-1)
