@@ -1,4 +1,4 @@
-#Chapter 1 Networking Introduction 
+# Chapter 1 Networking Introduction 
 
 1. Start up our Vagrant Host
 2. Start Golang web server
@@ -7,6 +7,7 @@
 A client will make an HTTP request to our minimal go web server, and it will send an HTTP response with text 
 containing "Hello". The web server runs locally inside an Ubuntu virtual machine to test the full TCP/IP stack. 
 
+## 1. Start up our Vagrant Host
 Vagrant Install can be found [here](https://www.vagrantup.com/)
 
 https://app.vagrantup.com/ubuntu/boxes/xenial64
@@ -258,7 +259,32 @@ Unmounting Virtualbox Guest Additions ISO from: /mnt
     default: /vagrant => /Users/strongjz/Documents/code/advanced_networking_code_examples
 ```
 
+## 2. Start Golang web server
 
 ```bash
+export PATH=$PATH:/usr/local/go/bin
 go run web-server.go
+
 ```
+
+In a new terminal window, ssh again into the vagrant machine to execute the curl command. 
+
+```bash
+vagrant@ubuntu-xenial:~$ curl -vvv localhost:8080
+* Rebuilt URL to: localhost:8080/
+*   Trying 127.0.0.1...
+* Connected to localhost (127.0.0.1) port 8080 (#0)
+> GET / HTTP/1.1
+> Host: localhost:8080
+> User-Agent: curl/7.47.0
+> Accept: */*
+> 
+< HTTP/1.1 200 OK
+< Date: Sun, 20 Jun 2021 19:59:52 GMT
+< Content-Length: 5
+< Content-Type: text/plain; charset=utf-8
+< 
+* Connection #0 to host localhost left intact
+Hellovagrant@ubuntu-xenial:~$ 
+```
+
