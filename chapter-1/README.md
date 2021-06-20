@@ -267,6 +267,7 @@ go run web-server.go
 
 ```
 
+## 3. Test Webserver with Curl
 In a new terminal window, ssh again into the vagrant machine to execute the curl command. 
 
 ```bash
