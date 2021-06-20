@@ -1,5 +1,5 @@
 
-#Chapter 3 Container Networking Intro
+# Chapter 3 Container Networking Intro
 
 The following steps show how to create the networking setup.
 
@@ -13,38 +13,15 @@ The following steps show how to create the networking setup.
 8. Attach one side of each veth pair to the bridge interface.
 9. Test
 
-Below are all the Linux Commands needed to create the network namespace, bridge, veth pairs, and wire them together
-outline the above steps.
-
-```bash
-vagrant@ubuntu-xenial:~$ echo 1 > /proc/sys/net/ipv4/ip_forward
-vagrant@ubuntu-xenial:~$ sudo ip netns add net1
-vagrant@ubuntu-xenial:~$ sudo ip link add veth0 type veth peer name veth1
-vagrant@ubuntu-xenial:~$ sudo ip link set veth1 netns net1
-vagrant@ubuntu-xenial:~$ sudo ip link add veth0 type veth peer name veth1
-vagrant@ubuntu-xenial:~$ sudo ip netns exec net1 ip addr add 192.168.1.101/24 dev veth1
-vagrant@ubuntu-xenial:~$ sudo ip netns exec net1 ip link set dev veth1 up
-vagrant@ubuntu-xenial:~$ sudo ip link add br0 type bridge
-vagrant@ubuntu-xenial:~$ sudo ip link set dev br0 up
-vagrant@ubuntu-xenial:~$ sudo ip link set enp0s3 master br0
-vagrant@ubuntu-xenial:~$ sudo ip link set veth0 master br0
-vagrant@ubuntu-xenial:~$ sudo ip netns exec net1  ip route add default via 192.168.1.100
-```
-
 ## 1. Create a host with a root network namespace.
 
 Follow the steps from Chapter 1 to start a Vagrant Host. 
 
-Then run these commands 
+Connect to the machine 
 
 ```bash
-vagrant@ubuntu-xenial:~$ sysctl net.ipv4.ip_forward
-net.ipv4.ip_forward = 0
-vagrant@ubuntu-xenial:~$ sudo echo 1 > /proc/sys/net/ipv4/ip_forward
-vagrant@ubuntu-xenial:~$  sysctl net.ipv4.ip_forward
-net.ipv4.ip_forward = 1
+vagrant ssh
 ```
-
 ## 2. Create a new network namespace.
 
 ```bash
@@ -101,12 +78,6 @@ Address veths
 ```bash
 vagrant@ubuntu-xenial:~$ sudo ip netns exec net0 ip addr add "192.168.1.100/24" dev veth0
 vagrant@ubuntu-xenial:~$ sudo ip netns exec net1 ip addr add "192.168.1.101/24" dev veth1
-```
-
-Turn up the veth interfaces
-```bash
-vagrant@ubuntu-xenial:~$ sudo ip netns exec net1 ip link set dev veth1 up
-vagrant@ubuntu-xenial:~$ sudo ip netns exec net0 ip link set dev veth0 up
 ```
 
 Turn up the veth side 
@@ -213,3 +184,5 @@ PING 192.168.1.100 (192.168.1.100) 56(84) bytes of data.
 4 packets transmitted, 4 received, 0% packet loss, time 2998ms
 rtt min/avg/max/mdev = 0.020/0.032/0.045/0.009 ms
 ```
+
+
