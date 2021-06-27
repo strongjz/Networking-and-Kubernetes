@@ -1,4 +1,4 @@
-apiVersion: extensions/v1beta1
+apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: ingress-resource
@@ -9,6 +9,9 @@ spec:
     - http:
         paths:
           - path: /host
+            pathType: Exact
             backend:
-              serviceName: clusterip-service
-              servicePort: 8080
+                service:
+                  name: clusterip-service
+                  port:
+                    number: 8080

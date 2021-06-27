@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: app2
+  name: app
 spec:
   selector:
     matchLabels:
-      app: app2
+      app: app
   replicas: 3
   template:
     metadata:
       labels:
-        app: app2
+        app: app
     spec:
       containers:
         - name: go-web
@@ -62,31 +62,14 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: clusterip-service-2
+  name: clusterip-service
   labels:
-    app: app2
+    app: app
 spec:
+  type: LoadBalancer
   selector:
-    app: app2
+    app: app
   ports:
     - protocol: TCP
       port: 80
       targetPort: 8080
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: ingress-resource
-  annotations:
-    kubernetes.io/ingress.class: nginx
-spec:
-  rules:
-    - http:
-        paths:
-          - path: /data
-            pathType: Exact
-            backend:
-              service:
-                name: clusterip-service-2
-                port:
-                  number: 8080

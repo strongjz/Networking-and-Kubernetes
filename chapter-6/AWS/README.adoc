@@ -1,0 +1,274 @@
+=== AWS EKS Cluster
+
+Let's walk through deploying an EKS cluster to manage our Golang web server.
+
+1. Deploy EKS Cluster
+2. Deploy Web Server Application and Loadbalancer
+3. Verify
+4. Clean Up
+
+==== Deploy EKS Cluster
+
+Let's deploy an EKS cluster, with the current, latest version EKS supports, 1.20.
+
+[source,bash]
+----
+export CLUSTER_NAME=eks-demo
+eksctl create cluster -N 3 --name ${CLUSTER_NAME} --version=1.20
+2021-06-26 15:21:51 [ℹ]  eksctl version 0.54.0
+2021-06-26 15:21:51 [ℹ]  using region us-west-2
+2021-06-26 15:21:52 [ℹ]  setting availability zones to [us-west-2b us-west-2a us-west-2c]
+2021-06-26 15:21:52 [ℹ]  subnets for us-west-2b - public:192.168.0.0/19 private:192.168.96.0/19
+2021-06-26 15:21:52 [ℹ]  subnets for us-west-2a - public:192.168.32.0/19 private:192.168.128.0/19
+2021-06-26 15:21:52 [ℹ]  subnets for us-west-2c - public:192.168.64.0/19 private:192.168.160.0/19
+2021-06-26 15:21:52 [ℹ]  nodegroup "ng-90b7a9a5" will use "ami-0a1abe779ecfc6a3e" [AmazonLinux2/1.20]
+2021-06-26 15:21:52 [ℹ]  using Kubernetes version 1.20
+2021-06-26 15:21:52 [ℹ]  creating EKS cluster "eks-demo" in "us-west-2" region with un-managed nodes
+2021-06-26 15:21:52 [ℹ]  will create 2 separate CloudFormation stacks for cluster itself and the initial nodegroup
+2021-06-26 15:21:52 [ℹ]  if you encounter any issues, check CloudFormation console or try 'eksctl utils describe-stacks --region=us-west-2 --cluster=eks-demo'
+2021-06-26 15:21:52 [ℹ]  CloudWatch logging will not be enabled for cluster "eks-demo" in "us-west-2"
+2021-06-26 15:21:52 [ℹ]  you can enable it with 'eksctl utils update-cluster-logging --enable-types={SPECIFY-YOUR-LOG-TYPES-HERE (e.g. all)} --region=us-west-2 --cluster=eks-demo'
+2021-06-26 15:21:52 [ℹ]  Kubernetes API endpoint access will use default of {publicAccess=true, privateAccess=false} for cluster "eks-demo" in "us-west-2"
+2021-06-26 15:21:52 [ℹ]  2 sequential tasks: { create cluster control plane "eks-demo", 3 sequential sub-tasks: { wait for control plane to become ready, 1 task: { create addons }, create nodegroup "ng-90b7a9a5" } }
+2021-06-26 15:21:52 [ℹ]  building cluster stack "eksctl-eks-demo-cluster"
+2021-06-26 15:21:54 [ℹ]  deploying stack "eksctl-eks-demo-cluster"
+2021-06-26 15:22:24 [ℹ]  waiting for CloudFormation stack "eksctl-eks-demo-cluster"
+<truncate>
+2021-06-26 15:39:04 [ℹ]  building nodegroup stack "eksctl-eks-demo-nodegroup-ng-90b7a9a5"
+2021-06-26 15:39:04 [ℹ]  --nodes-min=3 was set automatically for nodegroup ng-90b7a9a5
+2021-06-26 15:39:06 [ℹ]  deploying stack "eksctl-eks-demo-nodegroup-ng-90b7a9a5"
+2021-06-26 15:39:06 [ℹ]  waiting for CloudFormation stack "eksctl-eks-demo-nodegroup-ng-90b7a9a5"
+<truncated>
+2021-06-26 15:42:44 [ℹ]  waiting for the control plane availability...
+2021-06-26 15:42:44 [✔]  saved kubeconfig as "/Users/strongjz/.kube/config"
+2021-06-26 15:42:44 [ℹ]  no tasks
+2021-06-26 15:42:44 [✔]  all EKS cluster resources for "eks-demo" have been created
+2021-06-26 15:42:45 [ℹ]  adding identity "arn:aws:iam::1234567890:role/eksctl-eks-demo-nodegroup-ng-9-NodeInstanceRole-TLKVDDVTW2TZ" to auth ConfigMap
+2021-06-26 15:42:45 [ℹ]  nodegroup "ng-90b7a9a5" has 0 node(s)
+2021-06-26 15:42:45 [ℹ]  waiting for at least 3 node(s) to become ready in "ng-90b7a9a5"
+2021-06-26 15:43:23 [ℹ]  nodegroup "ng-90b7a9a5" has 3 node(s)
+2021-06-26 15:43:23 [ℹ]  node "ip-192-168-31-17.us-west-2.compute.internal" is ready
+2021-06-26 15:43:23 [ℹ]  node "ip-192-168-58-247.us-west-2.compute.internal" is ready
+2021-06-26 15:43:23 [ℹ]  node "ip-192-168-85-104.us-west-2.compute.internal" is ready
+2021-06-26 15:45:37 [ℹ]  kubectl command should work with "/Users/strongjz/.kube/config", try 'kubectl get nodes'
+2021-06-26 15:45:37 [✔]  EKS cluster "eks-demo" in "us-west-2" region is ready
+
+----
+
+In the output we can see that EKS creating a nodegroup, eksctl-eks-demo-nodegroup-ng-90b7a9a5, with 3 nodes,
+
+[source]
+----
+ip-192-168-31-17.us-west-2.compute.internal
+ip-192-168-58-247.us-west-2.compute.internal
+ip-192-168-85-104.us-west-2.compute.internal
+----
+
+All inside a VPC with 3 public and 3 private subnets across 3 AZs.
+
+[soource]
+----
+public:192.168.0.0/19 private:192.168.96.0/19
+public:192.168.32.0/19 private:192.168.128.0/19
+public:192.168.64.0/19 private:192.168.160.0/19
+----
+
+[WARNING]
+We used the default settings of eksctl, and it deployed the k8s API as a public endpoint, {publicAccess=true,
+privateAccess=false}
+
+Now we can deploy our Golang web application in the cluster and expose it with a Loadbalancer service.
+
+==== Deploy Test Application
+
+You can deploy them individually or all together. dnsutils.yml is our dnsutils testing pod, database.yml is the
+postgres database for pod connectivity testing,web.yml is the golang web server and the Loadbalancer service.
+
+[source,bash]
+----
+kubectl apply -f dnsutils.yml,database.yml,web.yml
+----
+
+Let's run a `kubectl get pods` to see if all the pods are running fine.
+
+[source,bash]
+----
+kubectl get pods -o wide
+NAME                   READY   STATUS    RESTARTS   AGE     IP               NODE
+app-6bf97c555d-5mzfb   1/1     Running   0          9m16s   192.168.15.108   ip-192-168-0-94.us-west-2.compute.internal
+app-6bf97c555d-76fgm   1/1     Running   0          9m16s   192.168.52.42    ip-192-168-63-151.us-west-2.compute.internal
+app-6bf97c555d-gw4k9   1/1     Running   0          9m16s   192.168.88.61    ip-192-168-91-46.us-west-2.compute.internal
+dnsutils               1/1     Running   0          9m17s   192.168.57.174   ip-192-168-63-151.us-west-2.compute.internal
+postgres-0             1/1     Running   0          9m17s   192.168.70.170   ip-192-168-91-46.us-west-2.compute.internal
+----
+
+and check on the loadbalancer service looks good.
+
+[source,bash]
+----
+kubectl get svc clusterip-service
+NAME                TYPE           CLUSTER-IP      EXTERNAL-IP                                                              PORT(S)        AGE
+clusterip-service   LoadBalancer   10.100.159.28   a76d1c69125e543e5b67c899f5e45284-593302470.us-west-2.elb.amazonaws.com   80:32671/TCP   29m
+----
+
+The Service has endpoints as well.
+
+[source,bash]
+----
+kubectl get endpoints clusterip-service
+NAME                ENDPOINTS                                                   AGE
+clusterip-service   192.168.15.108:8080,192.168.52.42:8080,192.168.88.61:8080   58m
+----
+
+We should verify the application is reachable inside the cluster, with the clusterip and
+port- `10.100.159.28:8080`, service name and port, `clusterip-service:80`,  and finally pod ip and port - `192.168.15.108:8080`
+
+[source,bash]
+----
+kubectl exec dnsutils -- wget -qO- 10.100.159.28:80/data
+Database Connected
+
+kubectl exec dnsutils -- wget -qO- 10.100.159.28:80/host
+NODE: ip-192-168-63-151.us-west-2.compute.internal, POD IP:192.168.52.42
+
+kubectl exec dnsutils -- wget -qO- clusterip-service:80/host
+NODE: ip-192-168-91-46.us-west-2.compute.internal, POD IP:192.168.88.61
+
+kubectl exec dnsutils -- wget -qO- clusterip-service:80/data
+Database Connected
+
+kubectl exec dnsutils -- wget -qO- 192.168.15.108:8080/data
+Database Connected
+
+kubectl exec dnsutils -- wget -qO- 192.168.15.108:8080/host
+NODE: ip-192-168-0-94.us-west-2.compute.internal, POD IP:192.168.15.108
+
+----
+
+Database port is reachable from dnsutils, with pod IP and port `192.168.70.170:5432`, and the service name and port - `postgres:5432`.
+
+[source,bash]
+----
+kubectl exec dnsutils -- nc -z -vv -w 5 192.168.70.170 5432
+192.168.70.170 (192.168.70.170:5432) open
+sent 0, rcvd 0
+
+kc exec dnsutils -- nc -z -vv -w 5 postgres 5432
+postgres (10.100.106.134:5432) open
+sent 0, rcvd 0
+
+----
+
+The application inside the cluster is up and running. Let's test it from external to the cluster.
+
+### Verify LoadBalancer Services for Golang Web Server
+
+kubectl will return all the information we will need to test, the cluster-ip, the external-ip, and all the ports.
+
+[source,bash]
+----
+kubectl get svc clusterip-service
+NAME                TYPE           CLUSTER-IP      EXTERNAL-IP                                                              PORT(S)        AGE
+clusterip-service   LoadBalancer   10.100.159.28   a76d1c69125e543e5b67c899f5e45284-593302470.us-west-2.elb.amazonaws.com   80:32671/TCP   29m
+
+----
+
+Using the External-ip of the loadbalancer
+
+[source,bash]
+----
+wget -qO- a76d1c69125e543e5b67c899f5e45284-593302470.us-west-2.elb.amazonaws.com/data
+Database Connected
+
+----
+
+Let's test out the Loadbalancer and make multiple requests to our backends.
+
+[source,bash]
+----
+wget -qO- a76d1c69125e543e5b67c899f5e45284-593302470.us-west-2.elb.amazonaws.com/host
+NODE: ip-192-168-63-151.us-west-2.compute.internal, POD IP:192.168.52.42
+
+wget -qO- a76d1c69125e543e5b67c899f5e45284-593302470.us-west-2.elb.amazonaws.com/host
+NODE: ip-192-168-91-46.us-west-2.compute.internal, POD IP:192.168.88.61
+
+wget -qO- a76d1c69125e543e5b67c899f5e45284-593302470.us-west-2.elb.amazonaws.com/host
+NODE: ip-192-168-0-94.us-west-2.compute.internal, POD IP:192.168.15.108
+
+wget -qO- a76d1c69125e543e5b67c899f5e45284-593302470.us-west-2.elb.amazonaws.com/host
+NODE: ip-192-168-0-94.us-west-2.compute.internal, POD IP:192.168.15.108
+
+----
+
+`kubectl get pods -o wide` again will verify our pod information matches the loadbalancer requests.
+
+[source,bash]
+----
+kubectl get pods -o wide
+NAME                   READY   STATUS    RESTARTS   AGE     IP               NODE
+app-6bf97c555d-5mzfb   1/1     Running   0          9m16s   192.168.15.108   ip-192-168-0-94.us-west-2.compute.internal
+app-6bf97c555d-76fgm   1/1     Running   0          9m16s   192.168.52.42    ip-192-168-63-151.us-west-2.compute.internal
+app-6bf97c555d-gw4k9   1/1     Running   0          9m16s   192.168.88.61    ip-192-168-91-46.us-west-2.compute.internal
+dnsutils               1/1     Running   0          9m17s   192.168.57.174   ip-192-168-63-151.us-west-2.compute.internal
+postgres-0             1/1     Running   0          9m17s   192.168.70.170   ip-192-168-91-46.us-west-2.compute.internal
+----
+
+We can also check the nodeport, since dnsutils is running inside our VPC, on an EC2 instance, it can do a dns lookup on
+the private host, ip-192-168-0-94.us-west-2.compute.internal, and the `kubectl get service` command gave use the
+nodeport, 32671.
+
+[source,bash]
+----
+kubectl exec dnsutils -- wget -qO- ip-192-168-0-94.us-west-2.compute.internal:32671/host
+NODE: ip-192-168-0-94.us-west-2.compute.internal, POD IP:192.168.15.108
+----
+
+Everything seems to running just fine externally and locally in our cluster.
+
+### Clean Up
+
+Once you are done working with EKS and testing, make sure to delete the applications pods, and the service to ensure
+that everything is deleted.
+
+[source,bash]
+----
+kubectl delete -f dnsutils.yml,database.yml,web.yml
+----
+
+Verify there are no left over EBS volumes from the PVC's for test application. Delete any ebs volumes found for the
+PVC's for the postgres test database.
+
+[source,bash]
+----
+aws ec2 describe-volumes --filters Name=tag:kubernetes.io/created-for/pv/name,Values=* --query "Volumes[].{ID:VolumeId}"
+----
+
+Verify there are no Load balancers running, ALB or otherwise
+
+[source,bash]
+----
+aws elbv2 describe-load-balancers --query "LoadBalancers[].LoadBalancerArn"
+----
+
+[source,bash]
+----
+aws elb describe-load-balancers --query "LoadBalancerDescriptions[].DNSName"
+----
+
+Let's make sure we delete the Cluster, so you don't get charged for a cluster doing nothing!
+
+[source,bash]
+----
+eksctl get clusters
+2021-06-27 13:08:42 [ℹ]  eksctl version 0.54.0
+2021-06-27 13:08:42 [ℹ]  using region us-west-2
+NAME            REGION          EKSCTL CREATED
+eks-demo        us-west-2       True
+----
+
+Now to delete the cluster.
+
+[source,bash]
+----
+eksctl delete cluster --name eks-demo
+----

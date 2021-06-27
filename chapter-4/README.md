@@ -170,7 +170,7 @@ Deploying our Webserver as a kubernetes deployment to our kind cluster.
 1.2  Deploy Web Server
 
 ```bash
- kubectl apply -f web.yaml 
+ kubectl apply -f web.yml 
 deployment.apps/app created 
 ```
 

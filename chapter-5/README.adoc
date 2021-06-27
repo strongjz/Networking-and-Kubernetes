@@ -59,12 +59,12 @@ With the kind cluster configuration yaml, we can use kind to create that cluster
 ----
  kind create cluster --config=kind-ingress.yaml
 Creating cluster "kind" ...
- ✓ Ensuring node image (kindest/node:v1.18.2) 🖼 
- ✓ Preparing nodes 📦  
- ✓ Writing configuration 📜 
- ✓ Starting control-plane 🕹️ 
- ✓ Installing CNI 🔌 
- ✓ Installing StorageClass 💾 
+ ✓ Ensuring node image (kindest/node:v1.18.2) 🖼
+ ✓ Preparing nodes 📦
+ ✓ Writing configuration 📜
+ ✓ Starting control-plane 🕹️
+ ✓ Installing CNI 🔌
+ ✓ Installing StorageClass 💾
 Set kubectl context to "kind-kind"
 You can now use your cluster with:
 
@@ -156,7 +156,7 @@ Before we deploy the services, we must first deploy the web server that the serv
 
 [source,bash]
 ----
- kubectl apply -f web.yaml
+ kubectl apply -f web.yml
 deployment.apps/app created
 
 kubectl get pods -o wide
@@ -416,7 +416,33 @@ Let's check the Network namespace as well, from the node ip a output
 
 [source,bash]
 ----
-cni-ec37f6e4-a1b5-9bc9-b324-59d612edb4d4
+ docker exec -it kind-worker2 ip a
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host
+       valid_lft forever preferred_lft forever
+2: tunl0@NONE: <NOARP> mtu 1480 qdisc noop state DOWN group default qlen 1000
+    link/ipip 0.0.0.0 brd 0.0.0.0
+3: ip6tnl0@NONE: <NOARP> mtu 1452 qdisc noop state DOWN group default qlen 1000
+    link/tunnel6 :: brd ::
+4: veth608eddaa@if5: <> UP group default
+    link/ether 76:e6:c5:a4:71:7d brd <> link-netns cni-c18c44cb-6c3e-c48d-b783-e7850d40e01c
+    inet 10.244.1.1/32 brd 10.244.1.1 scope global veth608eddaa
+       valid_lft forever preferred_lft forever
+5: veth45d1f3e8@if5: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default
+    link/ether 3e:39:16:38:3f:23 brd <> link-netns cni-ec37f6e4-a1b5-9bc9-b324-59d612edb4d4
+    inet 10.244.1.1/32 brd 10.244.1.1 scope global veth45d1f3e8
+       valid_lft forever preferred_lft forever
+11: eth0@if12: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default
+    link/ether 02:42:ac:12:00:04 brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet 172.18.0.4/16 brd 172.18.255.255 scope global eth0
+       valid_lft forever preferred_lft forever
+    inet6 fc00:f853:ccd:e793::4/64 scope global nodad
+       valid_lft forever preferred_lft forever
+    inet6 fe80::42:acff:fe12:4/64 scope link
+       valid_lft forever preferred_lft forever
 ----
 
 And `netns list` confirms that for us.
@@ -1504,7 +1530,7 @@ We can use the linkerd cli to inject the proper annotations into our deployment 
 
 [source,bash]
 ----
-cat web.yaml | linkerd inject - | kubectl apply -f -
+cat web.yml | linkerd inject - | kubectl apply -f -
 
 deployment "app" injected
 
@@ -1622,32 +1648,11 @@ In our terminal we can see all the liveliness and readiness probes as well as ou
 
 [source,bash]
 ----
-(press q to quit)
-(press a/LeftArrowKey to scroll left, d/RightArrowKey to scroll right)
+linkerd viz stat deploy
+NAME   MESHED   SUCCESS      RPS   LATENCY_P50   LATENCY_P95   LATENCY_P99   TCP_CONN
+app       1/1   100.00%   0.7rps           1ms           1ms           1ms          3
 
-Source      Destination           Method      Path       Count    Best   Worst    Last  Success Rate
-10.244.2.1  app-8585c88ff4-8t8tm  GET         /              2   456µs   711µs   456µs       100.00%
-10.244.3.1  app-8585c88ff4-k98t7  GET         /              2   410µs   501µs   410µs       100.00%
-10.244.3.1  app-8585c88ff4-xdcp4  GET         /healthz       2   618µs   847µs   618µs       100.00%
-10.244.2.1  app-8585c88ff4-8t8tm  GET         /healthz       2   744µs   901µs   744µs       100.00%
-10.244.1.1  app-8585c88ff4-47p6d  GET         /              1   535µs   535µs   535µs       100.00%
-10.244.1.1  app-8585c88ff4-l5h2g  GET         /healthz       1   516µs   516µs   516µs       100.00%
-10.244.2.1  app-8585c88ff4-tr72b  GET         /healthz       1   905µs   905µs   905µs       100.00%
-tmp-shell   app-8585c88ff4-7w6f5  GET         /host          1   657µs   657µs   657µs       100.00%
-10.244.2.1  app-8585c88ff4-q46r9  GET         /healthz       1   612µs   612µs   612µs       100.00%
-10.244.3.1  app-8585c88ff4-k98t7  GET         /healthz       1   715µs   715µs   715µs       100.00%
-10.244.1.1  app-8585c88ff4-47p6d  GET         /healthz       1     1ms     1ms     1ms       100.00%
-10.244.2.1  app-8585c88ff4-7w6f5  GET         /              1     3ms     3ms     3ms       100.00%
-10.244.1.1  app-8585c88ff4-fh6mb  GET         /              1   401µs   401µs   401µs       100.00%
-10.244.2.1  app-8585c88ff4-7w6f5  GET         /healthz       1     1ms     1ms     1ms       100.00%
-10.244.3.1  app-8585c88ff4-2s6qv  GET         /healthz       1   519µs   519µs   519µs       100.00%
-10.244.3.1  app-8585c88ff4-2s6qv  GET         /              1   459µs   459µs   459µs       100.00%
-10.244.2.1  app-8585c88ff4-q46r9  GET         /              1   426µs   426µs   426µs       100.00%
-tmp-shell   app-8585c88ff4-xdcp4  GET         /host          1   437µs   437µs   437µs       100.00%
-10.244.1.1  app-8585c88ff4-fh6mb  GET         /healthz       1   300µs   300µs   300µs       100.00%
 ----
-
-
 
 === Clean up
 

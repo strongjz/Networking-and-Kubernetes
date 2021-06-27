@@ -13,6 +13,20 @@ The following steps show how to create the networking setup.
 8. Attach one side of each veth pair to the bridge interface.
 9. Test
 
+```bash
+      br-veth0          veth0  +-------------+
+         +--------------------- + net0       |
+         |       192.168.1.100 +-------------+
++--------+
+|        |
+| br1    | 192.168.1.10
+|        |
++--------+
+         |              veth1  +-------------+
+         +---------------------+ net1        |
+      br-veth1   192.168.1.101 +-------------+
+```
+
 ## 1. Create a host with a root network namespace.
 
 Follow the steps from Chapter 1 to start a Vagrant Host. 
