@@ -1,4 +1,4 @@
-=== AWS EKS Cluster
+==== Deploying an Application on AWS EKS Cluster
 
 Let's walk through deploying an EKS cluster to manage our Golang web server.
 
@@ -7,7 +7,7 @@ Let's walk through deploying an EKS cluster to manage our Golang web server.
 3. Verify
 4. Clean Up
 
-==== Deploy EKS Cluster
+===== Deploy EKS Cluster
 
 Let's deploy an EKS cluster, with the current, latest version EKS supports, 1.20.
 
@@ -79,7 +79,7 @@ privateAccess=false}
 
 Now we can deploy our Golang web application in the cluster and expose it with a Loadbalancer service.
 
-==== Deploy Test Application
+===== Deploy Test Application
 
 You can deploy them individually or all together. dnsutils.yml is our dnsutils testing pod, database.yml is the
 postgres database for pod connectivity testing,web.yml is the golang web server and the Loadbalancer service.
@@ -161,7 +161,7 @@ sent 0, rcvd 0
 
 The application inside the cluster is up and running. Let's test it from external to the cluster.
 
-### Verify LoadBalancer Services for Golang Web Server
+===== Verify LoadBalancer Services for Golang Web Server
 
 kubectl will return all the information we will need to test, the cluster-ip, the external-ip, and all the ports.
 
@@ -225,7 +225,191 @@ NODE: ip-192-168-0-94.us-west-2.compute.internal, POD IP:192.168.15.108
 
 Everything seems to running just fine externally and locally in our cluster.
 
-### Clean Up
+==== Deploy ALB Ingress and Verify
+
+For some sections of the deployment, we will need to know the AWS Account ID we are deploying. Let's put that into
+an environment variable. To get your account ID you can run:
+
+[source,bash]
+----
+aws sts get-caller-identity
+{
+    "UserId": "AIDA2RZMTHAQTEUI3Z537",
+    "Account": "1234567890",
+    "Arn": "arn:aws:iam::1234567890:user/eks"
+}
+
+export ACCOUNT_ID=1234567890
+----
+
+If it is not setup for the cluster already, we will have to set up an OIDC provider with the cluster.
+
+This step is needed to give IAM permissions to a pod running in the cluster using the IAM for SA.
+
+[source,bash]
+----
+eksctl utils associate-iam-oidc-provider \
+--region ${AWS_REGION} \
+--cluster ${CLUSTER_NAME}  \
+--approve
+----
+
+For the SA role, we will need to create an IAM policy to determine the permissions for the ALB Controller in AWS.
+
+[source,bash]
+----
+aws iam create-policy \
+--policy-name AWSLoadBalancerControllerIAMPolicy \
+--policy-document iam_policy.json
+----
+
+Now we need to create the SA and attached it to the IAM role we created.
+
+[source,bash]
+----
+eksctl create iamserviceaccount \
+> --cluster ${CLUSTER_NAME} \
+> --namespace kube-system \
+> --name aws-load-balancer-controller \
+> --attach-policy-arn arn:aws:iam::${ACCOUNT_ID}:policy/AWSLoadBalancerControllerIAMPolicy \
+> --override-existing-serviceaccounts \
+> --approve
+2021-06-27 14:39:30 [ℹ]  eksctl version 0.54.0
+2021-06-27 14:39:30 [ℹ]  using region us-west-2
+2021-06-27 14:39:31 [ℹ]  1 iamserviceaccount (kube-system/aws-load-balancer-controller) was included (based on the include/exclude rules)
+2021-06-27 14:39:31 [!]  metadata of serviceaccounts that exist in Kubernetes will be updated, as --override-existing-serviceaccounts was set
+2021-06-27 14:39:31 [ℹ]  1 task: { 2 sequential sub-tasks: { create IAM role for serviceaccount "kube-system/aws-load-balancer-controller", create serviceaccount "kube-system/aws-load-balancer-controller" } }
+2021-06-27 14:39:31 [ℹ]  building iamserviceaccount stack "eksctl-alb-ingress-3-addon-iamserviceaccount-kube-system-aws-load-balancer-controller"
+2021-06-27 14:39:31 [ℹ]  deploying stack "eksctl-alb-ingress-3-addon-iamserviceaccount-kube-system-aws-load-balancer-controller"
+2021-06-27 14:39:31 [ℹ]  waiting for CloudFormation stack "eksctl-eks-demo-addon-iamserviceaccount-kube-system-aws-load-balancer-controller"
+2021-06-27 14:39:48 [ℹ]  waiting for CloudFormation stack "eksctl-eks-demo-addon-iamserviceaccount-kube-system-aws-load-balancer-controller"
+2021-06-27 14:40:05 [ℹ]  waiting for CloudFormation stack "eksctl-eks-demo-addon-iamserviceaccount-kube-system-aws-load-balancer-controller"
+2021-06-27 14:40:06 [ℹ]  created serviceaccount "kube-system/aws-load-balancer-controller"
+----
+
+We can see all the details of the SA with
+
+[source,bash]
+----
+kubectl get sa aws-load-balancer-controller -n kube-system -o yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+annotations:
+eks.amazonaws.com/role-arn: arn:aws:iam::1234567890:role/eksctl-eks-demo-addon-iamserviceaccount-Role1-RNXLL4UJ1NPV
+creationTimestamp: "2021-06-27T18:40:06Z"
+labels:
+app.kubernetes.io/managed-by: eksctl
+name: aws-load-balancer-controller
+namespace: kube-system
+resourceVersion: "16133"
+uid: 30281eb5-8edf-4840-bc94-f214c1102e4f
+secrets:
+- name: aws-load-balancer-controller-token-dtq48
+----
+
+The TargetGroupBinding Customer Resource definition, CRD, is allows the Controller to bind a Kubernetes
+service endpoints to a AWS TargetGroup.
+
+[source,bash]
+----
+kubectl apply -f crd.yml
+customresourcedefinition.apiextensions.k8s.io/ingressclassparams.elbv2.k8s.aws configured
+customresourcedefinition.apiextensions.k8s.io/targetgroupbindings.elbv2.k8s.aws configured
+----
+
+Now were ready to the deploy the ALB Controller with helm.
+
+Set the version environment to deploy
+[source,bash]
+----
+export ALB_LB_VERSION="v2.2.0"
+----
+
+Now deploy it, add the eks helm repo, get the VPC id the cluster is running in and finally deploy via helm.
+
+[source,bash]
+----
+helm repo add eks https://aws.github.io/eks-charts
+
+export VPC_ID=$(aws eks describe-cluster \
+--name ${CLUSTER_NAME} \
+--query "cluster.resourcesVpcConfig.vpcId" \
+--output text)
+
+helm upgrade -i aws-load-balancer-controller \
+eks/aws-load-balancer-controller \
+-n kube-system \
+--set clusterName=${CLUSTER_NAME} \
+--set serviceAccount.create=false \
+--set serviceAccount.name=aws-load-balancer-controller \
+--set image.tag="${ALB_LB_VERSION}" \
+--set region=${AWS_REGION} \
+--set vpcId=${VPC_ID}
+
+Release "aws-load-balancer-controller" has been upgraded. Happy Helming!
+NAME: aws-load-balancer-controller
+LAST DEPLOYED: Sun Jun 27 14:43:06 2021
+NAMESPACE: kube-system
+STATUS: deployed
+REVISION: 2
+TEST SUITE: None
+NOTES:
+AWS Load Balancer controller installed!
+----
+
+We can watch the deploy logs here:
+
+[source,bash]
+----
+kc logs -n kube-system -f deploy/aws-load-balancer-controller
+----
+
+Now to deploy our Ingress with ALB
+
+[source,bash]
+----
+kubeclt apply -f alb-rules.yml
+ingress.networking.k8s.io/app configured
+----
+
+With the `kubectl describe ing app` output, we can see the ALB has been deployed.
+
+We can also see the ALB Public DNS address, the rules for the instances, and the endpoints backing the service.
+
+[source,bash]
+----
+kubectl describe ing app
+Name:             app
+Namespace:        default
+Address:          k8s-default-app-d5e5a26be4-2128411681.us-west-2.elb.amazonaws.com
+Default backend:  default-http-backend:80 (<error: endpoints "default-http-backend" not found>)
+Rules:
+Host        Path  Backends
+  ----        ----  --------
+*
+          /data   clusterip-service:80 (192.168.3.221:8080,192.168.44.165:8080,192.168.89.224:8080)
+          /host   clusterip-service:80 (192.168.3.221:8080,192.168.44.165:8080,192.168.89.224:8080)
+Annotations:  alb.ingress.kubernetes.io/scheme: internet-facing
+kubernetes.io/ingress.class: alb
+Events:
+Type     Reason                  Age                     From     Message
+  ----     ------                  ----                    ----     -------
+Normal   SuccessfullyReconciled  4m33s (x2 over 5m58s)   ingress  Successfully reconciled
+----
+
+Time to test our ALB!
+
+[source,bash]
+----
+wget -qO- k8s-default-app-d5e5a26be4-2128411681.us-west-2.elb.amazonaws.com/data
+Database Connected
+
+wget -qO- k8s-default-app-d5e5a26be4-2128411681.us-west-2.elb.amazonaws.com/host
+NODE: ip-192-168-63-151.us-west-2.compute.internal, POD IP:192.168.44.165
+----
+
+===== Clean Up
 
 Once you are done working with EKS and testing, make sure to delete the applications pods, and the service to ensure
 that everything is deleted.
@@ -233,6 +417,20 @@ that everything is deleted.
 [source,bash]
 ----
 kubectl delete -f dnsutils.yml,database.yml,web.yml
+----
+
+Clean up the ALB.
+
+[source,bash]
+----
+kubectl delete -f alb-rules.yml
+----
+
+Remove The IAM policy for ALB Controller.
+
+[source,bash]
+----
+aws iam  delete-policy --policy-arn arn:aws:iam::${ACCOUNT_ID}:policy/AWSLoadBalancerControllerIAMPolicy
 ----
 
 Verify there are no left over EBS volumes from the PVC's for test application. Delete any ebs volumes found for the
@@ -259,16 +457,5 @@ Let's make sure we delete the Cluster, so you don't get charged for a cluster do
 
 [source,bash]
 ----
-eksctl get clusters
-2021-06-27 13:08:42 [ℹ]  eksctl version 0.54.0
-2021-06-27 13:08:42 [ℹ]  using region us-west-2
-NAME            REGION          EKSCTL CREATED
-eks-demo        us-west-2       True
-----
-
-Now to delete the cluster.
-
-[source,bash]
-----
-eksctl delete cluster --name eks-demo
+eksctl delete cluster --name ${CLUSTER_NAME}
 ----
