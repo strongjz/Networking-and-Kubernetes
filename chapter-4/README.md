@@ -6,7 +6,7 @@ Tools Needed
 
 Kind install can be found [here](https://kind.sigs.k8s.io/docs/user/quick-start/#installation)
 
-Helm install can be found [here](https://helm.sh/docs/helm/helm_install/)
+Helm install can be found [here](https://helm.sh/docs/intro/install/)
 
 Cilium Rules basic are available [here](https://docs.cilium.io/en/v1.9/policy/intro/#rule-basics)
 
